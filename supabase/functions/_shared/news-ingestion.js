@@ -4,6 +4,7 @@ import {
   matchCompanies,
   buildFactualSummary,
 } from "./news-rules.js";
+import { buildArticleSummaryInput, isSafePublicArticleUrl } from "./article-content.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const DEFAULT_FEED_TIMEOUT_MS = 8_000;
@@ -11,6 +12,11 @@ const DEFAULT_TRANSLATION_TIMEOUT_MS = 6_000;
 const DEFAULT_TRANSLATION_CONCURRENCY = 6;
 const DEFAULT_TRANSLATION_BUDGET = 80;
 const DEFAULT_CANDIDATE_BATCH_SIZE = 100;
+const DEFAULT_ARTICLE_PAGE_TIMEOUT_MS = 8_000;
+const DEFAULT_ARTICLE_PAGE_CONCURRENCY = 4;
+const DEFAULT_ARTICLE_PAGE_BUDGET = 30;
+const DEFAULT_ARTICLE_PAGE_MAX_REDIRECTS = 3;
+const DEFAULT_ARTICLE_PAGE_MAX_BYTES = 1_000_000;
 const STALE_RUN_AFTER_MS = 15 * 60 * 1_000;
 
 function jsonResponse(payload, status = 200) {
@@ -53,6 +59,131 @@ async function fetchWithDeadline(fetchImpl, url, options, timeoutMs, label, cons
   } finally {
     clearTimeout(timer);
   }
+}
+
+function responseHeader(response, name) {
+  return response?.headers?.get?.(name) ?? "";
+}
+
+async function readBoundedText(response, maxBytes) {
+  const declaredLength = Number(responseHeader(response, "content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) throw new Error("Publisher article exceeds byte limit");
+  if (!response.body?.getReader) {
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > maxBytes) throw new Error("Publisher article exceeds byte limit");
+    return text;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        await reader.cancel();
+        throw new Error("Publisher article exceeds byte limit");
+      }
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+    return chunks.join("");
+  } finally {
+    reader.releaseLock?.();
+  }
+}
+
+async function fetchPublisherPage(rawUrl, options) {
+  const {
+    fetchArticlePage,
+    articlePageTimeoutMs,
+    articlePageMaxRedirects,
+    articlePageMaxBytes,
+  } = options;
+  if (!fetchArticlePage) return { kind: "rss_fallback" };
+  if (!isSafePublicArticleUrl(rawUrl)) return { kind: "invalid" };
+
+  let currentUrl = rawUrl;
+  for (let redirectCount = 0; redirectCount <= articlePageMaxRedirects; redirectCount += 1) {
+    let page;
+    try {
+      page = await fetchWithDeadline(fetchArticlePage, currentUrl, {
+        redirect: "manual",
+        headers: { "User-Agent": "Longview investment education news reader" },
+      }, articlePageTimeoutMs, "Publisher article", async response => {
+        const status = response.status;
+        if (status >= 300 && status < 400) return { response, status, redirect: responseHeader(response, "location") };
+        if (status === 401 || status === 403 || status === 429) return { status, kind: "blocked" };
+        if (!response.ok) return { status, kind: "rss_fallback" };
+        if (!/^text\/html(?:\s*;|$)|^application\/xhtml\+xml(?:\s*;|$)/i.test(responseHeader(response, "content-type"))) {
+          return { status, kind: "invalid" };
+        }
+        return { status, kind: "html", html: await readBoundedText(response, articlePageMaxBytes) };
+      });
+    } catch {
+      return { kind: "rss_fallback" };
+    }
+    if (page.kind) return page;
+    if (!page.redirect || redirectCount === articlePageMaxRedirects) return { kind: "invalid" };
+    let nextUrl;
+    try {
+      nextUrl = new URL(page.redirect, currentUrl).toString();
+    } catch {
+      return { kind: "invalid" };
+    }
+    if (!isSafePublicArticleUrl(nextUrl)) return { kind: "invalid" };
+    currentUrl = nextUrl;
+  }
+  return { kind: "invalid" };
+}
+
+function statusForPageResult(page, summary) {
+  if (page.kind === "blocked") return "blocked";
+  if (page.kind === "invalid") return "invalid";
+  if (summary.contentScope === "publisher_article" && summary.contentStatus === "extracted") return "extracted";
+  return "rss_fallback";
+}
+
+function pageCounters(prepared) {
+  return prepared.reduce((counts, entry) => {
+    const status = entry.contentStatus;
+    if (status === "extracted") counts.articlePagesExtracted += 1;
+    else {
+      counts.rssFallbacks += 1;
+      if (status === "blocked") counts.blockedPages += 1;
+      if (status === "invalid") counts.invalidPages += 1;
+    }
+    return counts;
+  }, { articlePagesExtracted: 0, rssFallbacks: 0, blockedPages: 0, invalidPages: 0 });
+}
+
+function readerSummaryFor(entry, matches) {
+  const fallback = buildFactualSummary({
+    title: entry.article.title,
+    summary: entry.article.summary,
+    titleTh: entry.titleTh,
+    summaryTh: entry.summaryTh,
+  }, matches);
+  if (entry.contentStatus !== "extracted") return fallback;
+
+  const translatedEvidence = entry.translatedEvidence.filter(Boolean);
+  const translatedTitle = entry.titleTh ? `หัวข้อข่าว: ${entry.titleTh}` : null;
+  const keyPointsTh = [translatedTitle, ...translatedEvidence].filter(Boolean).slice(0, 5);
+  return {
+    whatHappenedTh: translatedEvidence[0]
+      ?? entry.titleTh
+      ?? "ยังไม่มีคำแปลภาษาไทยสำหรับข้อความจากหน้าเว็บต้นฉบับ โปรดอ่านแหล่งข่าวต้นฉบับเพิ่มเติม",
+    entitiesTh: entry.summaryInput.entities,
+    keyPointsTh,
+    keyNumbers: entry.summaryInput.keyNumbers,
+    uncertaintiesTh: translatedEvidence.length
+      ? "สรุปนี้อ้างอิงข้อความบางส่วนจากหน้าเว็บต้นฉบับ ไม่ใช่คำแปลบทความเต็ม"
+      : "ไม่สามารถแปลข้อความจากหน้าเว็บต้นฉบับได้ จึงแสดงข้อมูลภาษาอังกฤษและแหล่งข่าวต้นฉบับประกอบ",
+    sourceScope: "article_page",
+    summaryVersion: "article-extractive-v1",
+  };
 }
 
 function decodeXml(value = "") {
@@ -200,7 +331,7 @@ export function createSupabaseNewsRepository(client, options = {}) {
 
     async findCachedArticles(candidates) {
       const rowsById = new Map();
-      const select = "id,external_id,source_url,title_th,summary_th,translated_at,translation_provider";
+      const select = "id,external_id,source_url,title_th,summary_th,translated_at,translation_provider,content_scope,content_status";
       for (const batch of chunks([...new Set(candidates.externalIds)], candidateBatchSize)) {
         const { data, error } = await client.from("stock_news").select(select).in("external_id", batch);
         throwDatabaseError(error, "Loading cached articles by id");
@@ -233,8 +364,8 @@ export function createSupabaseNewsRepository(client, options = {}) {
   };
 }
 
-function basePayload(status, feeds, articlesSaved, linksSaved) {
-  return { ok: status !== "failed", status, feeds, articlesSaved, linksSaved };
+function basePayload(status, feeds, articlesSaved, linksSaved, articleDetail = {}) {
+  return { ok: status !== "failed", status, feeds, articlesSaved, linksSaved, ...articleDetail };
 }
 
 export function createIngestionHandler(options) {
@@ -249,6 +380,12 @@ export function createIngestionHandler(options) {
     translationTimeoutMs = DEFAULT_TRANSLATION_TIMEOUT_MS,
     translationConcurrency = DEFAULT_TRANSLATION_CONCURRENCY,
     translationBudget = DEFAULT_TRANSLATION_BUDGET,
+    fetchArticlePage,
+    articlePageTimeoutMs = DEFAULT_ARTICLE_PAGE_TIMEOUT_MS,
+    articlePageConcurrency = DEFAULT_ARTICLE_PAGE_CONCURRENCY,
+    articlePageBudget = DEFAULT_ARTICLE_PAGE_BUDGET,
+    articlePageMaxRedirects = DEFAULT_ARTICLE_PAGE_MAX_REDIRECTS,
+    articlePageMaxBytes = DEFAULT_ARTICLE_PAGE_MAX_BYTES,
   } = options;
 
   return async function handleIngestion(request) {
@@ -276,6 +413,7 @@ export function createIngestionHandler(options) {
     let feeds = [];
     let articlesSaved = 0;
     let linksSaved = 0;
+    let articleDetail = { articlePagesExtracted: 0, rssFallbacks: 0, blockedPages: 0, invalidPages: 0, translationAttempts: 0 };
     try {
       const tickers = SUPPORTED_COMPANIES.map(({ ticker }) => ticker);
       const companyRows = await database.findCompanies(tickers);
@@ -344,31 +482,64 @@ export function createIngestionHandler(options) {
           externalId: cached?.external_id ?? article.externalId,
           titleTh: cached?.title_th ?? null,
           summaryTh: cached?.summary_th ?? null,
+          page: { kind: "rss_fallback" },
+          summaryInput: null,
+          contentStatus: "rss_fallback",
+          translatedEvidence: [],
         };
       });
 
+      const pageCandidates = prepared.filter((entry) => !(
+        entry.cached?.content_scope === "article_page" && entry.cached?.content_status === "extracted"
+      )).slice(0, articlePageBudget);
+      await mapWithConcurrency(pageCandidates, articlePageConcurrency, async entry => {
+        entry.page = await fetchPublisherPage(entry.article.sourceUrl, {
+          fetchArticlePage,
+          articlePageTimeoutMs,
+          articlePageMaxRedirects,
+          articlePageMaxBytes,
+        });
+      });
+      for (const entry of prepared) {
+        entry.summaryInput = buildArticleSummaryInput({
+          title: entry.article.title,
+          rssExcerpt: entry.article.summary,
+          html: entry.page.html ?? "",
+          companies: SUPPORTED_COMPANIES,
+        });
+        entry.contentStatus = statusForPageResult(entry.page, entry.summaryInput);
+      }
+      articleDetail = { ...pageCounters(prepared), translationAttempts: 0 };
+
       const translationTasks = [];
       for (const entry of prepared) {
+        const cachedArticlePage = entry.cached?.content_scope === "article_page" && entry.cached?.content_status === "extracted";
+        if (cachedArticlePage) continue;
         if (!entry.titleTh && entry.article.title && translationTasks.length < translationBudget) {
           translationTasks.push({ entry, field: "titleTh", value: entry.article.title });
         }
-        if (!entry.summaryTh && entry.article.summary && translationTasks.length < translationBudget) {
+        if (entry.contentStatus === "extracted") {
+          entry.summaryInput.evidence.forEach((fragment, index) => {
+            if (translationTasks.length < translationBudget) {
+              translationTasks.push({ entry, field: "evidence", index, value: fragment.text });
+            }
+          });
+        } else if (!entry.summaryTh && entry.article.summary && translationTasks.length < translationBudget) {
           translationTasks.push({ entry, field: "summaryTh", value: entry.article.summary });
         }
       }
+      articleDetail.translationAttempts = translationTasks.length;
       await mapWithConcurrency(translationTasks, translationConcurrency, async task => {
-        task.entry[task.field] = await translateThai(task.value, { fetchImpl, translationTimeoutMs });
+        const translated = await translateThai(task.value, { fetchImpl, translationTimeoutMs });
+        if (task.field === "evidence") task.entry.translatedEvidence[task.index] = translated;
+        else task.entry[task.field] = translated;
       });
 
       const timestamp = now().toISOString();
       const articleRows = prepared.map(entry => {
         const matches = [...entry.article.matchesByTicker.values()];
-        const factualSummary = buildFactualSummary({
-          title: entry.article.title,
-          summary: entry.article.summary,
-          titleTh: entry.titleTh,
-          summaryTh: entry.summaryTh,
-        }, matches);
+        const factualSummary = readerSummaryFor(entry, matches);
+        const isExtracted = entry.contentStatus === "extracted";
         return {
           company_id: companyIdByTicker.get(entry.article.discoveryTicker),
           external_id: entry.externalId,
@@ -390,6 +561,14 @@ export function createIngestionHandler(options) {
           uncertainties_th: factualSummary.uncertaintiesTh,
           source_scope: factualSummary.sourceScope,
           summary_version: factualSummary.summaryVersion,
+          content_scope: isExtracted ? "article_page" : "rss_excerpt",
+          content_status: entry.contentStatus,
+          content_fetched_at: entry.page.kind === "rss_fallback" ? null : timestamp,
+          source_evidence: entry.summaryInput.evidence,
+          watch_points_th: isExtracted
+            ? ["ควรติดตามรายละเอียดและพัฒนาการต่อเนื่องจากแหล่งข่าวต้นฉบับ"]
+            : [],
+          summary_method: "extractive_rules_v1",
         };
       });
       const savedArticleRows = articleRows.length ? await database.upsertArticles(articleRows) : [];
@@ -427,7 +606,7 @@ export function createIngestionHandler(options) {
         finished_at: now().toISOString(),
         articles_found: feeds.reduce((total, feed) => total + feed.found, 0),
         articles_saved: articlesSaved,
-        detail: { feeds, articlesSaved, linksSaved, feed: "Yahoo Finance RSS" },
+        detail: { feeds, articlesSaved, linksSaved, feed: "Yahoo Finance RSS", ...articleDetail },
       };
       try {
         await database.finalizeRun(runId, runValues);
@@ -445,12 +624,12 @@ export function createIngestionHandler(options) {
           logger.error("Unable to record failed finalization", fallbackError);
         }
         return jsonResponse({
-          ...basePayload("failed", feeds, articlesSaved, linksSaved),
+          ...basePayload("failed", feeds, articlesSaved, linksSaved, articleDetail),
           processingError: "Could not finalize news ingestion run",
           finalizationRecorded,
         }, 500);
       }
-      return jsonResponse(basePayload(status, feeds, articlesSaved, linksSaved), status === "failed" ? 502 : 200);
+      return jsonResponse(basePayload(status, feeds, articlesSaved, linksSaved, articleDetail), status === "failed" ? 502 : 200);
     } catch (error) {
       logger.error("News ingestion processing failed", error);
       let finalizationRecorded = false;
@@ -460,14 +639,14 @@ export function createIngestionHandler(options) {
           finished_at: now().toISOString(),
           articles_found: feeds.reduce((total, feed) => total + feed.found, 0),
           articles_saved: articlesSaved,
-          detail: { feeds, articlesSaved, linksSaved, processing_error: "processing_failed" },
+          detail: { feeds, articlesSaved, linksSaved, ...articleDetail, processing_error: "processing_failed" },
         });
         finalizationRecorded = true;
       } catch (finalizationError) {
         logger.error("Unable to record failed ingestion run", finalizationError);
       }
       return jsonResponse({
-        ...basePayload("failed", feeds, articlesSaved, linksSaved),
+        ...basePayload("failed", feeds, articlesSaved, linksSaved, articleDetail),
         processingError: "News ingestion processing failed",
         finalizationRecorded,
       }, 500);

@@ -14,6 +14,7 @@ const handler = createIngestionHandler({
     return createSupabaseNewsRepository(client);
   },
   fetchImpl: fetch,
+  fetchArticlePage: fetch,
   getSecret: () => Deno.env.get("NEWS_INGEST_SECRET"),
 });
 
