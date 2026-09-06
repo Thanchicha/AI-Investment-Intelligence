@@ -1,4 +1,4 @@
-import { articlesForHoldings, relatedHeldCompanies } from "./supabase/functions/_shared/news-rules.js";
+import { articleReadingModel, articleRouteId, articlesForHoldings, relatedHeldCompanies } from "./supabase/functions/_shared/news-rules.js";
 
 const config = window.LONGVIEW_CONFIG || {};
 const configured = Boolean(config.supabaseUrl && config.supabasePublishableKey && window.supabase);
@@ -156,15 +156,15 @@ function newsAnalysisCards(limit = 8, articles = portfolioNews()) {
     return `<div class="empty-state"><h3>${message}</h3></div>`;
   }
   return articles.slice(0, limit).map(article => {
-    const analysis = analyzeNews(article);
-    const related = analysis.related.length ? analysis.related.map(company => `<a class="ticker-pill" href="#company/${esc(company.ticker)}">${esc(company.ticker)}</a>`).join("") : `<span class="ticker-pill muted">ไม่พบหุ้นในพอร์ต</span>`;
-    return `<article class="analysis-card risk-${analysis.key}">
-      <div class="analysis-card-top"><div class="news-meta"><span class="topic">${esc(categoryLabels[article.category] || "บริษัท")}</span><span>${esc(article.source_name)}</span><span>·</span><time datetime="${esc(article.published_at)}">${new Date(article.published_at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}</time></div><span class="risk-badge ${analysis.key}">${esc(analysis.label)}</span></div>
-      <h2><a href="${esc(article.source_url)}" target="_blank" rel="noopener noreferrer">${esc(article.title_th || article.title)} ↗</a></h2>
-      <p class="article-summary">${esc(article.summary_th || article.summary || "ไม่มีบทสรุปจากแหล่งข่าว")}</p>
+    const model = articleReadingModel(article, state.newsLinks, holdingIds(), state.companies);
+    if (!model) return "";
+    const related = model.relatedCompanies.map(company => `<a class="ticker-pill" href="#company/${esc(company.ticker)}">${esc(company.ticker)}</a>`).join("");
+    return `<article class="analysis-card news-card">
+      <div class="analysis-card-top"><div class="news-meta"><span class="topic">${esc(categoryLabels[article.category] || "บริษัท")}</span><span>${esc(model.publisher)}</span><span>·</span><time datetime="${esc(model.publishedAt || "")}">${model.publishedAt ? new Date(model.publishedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }) : "ไม่ระบุเวลา"}</time></div><span class="scope-badge">${esc(model.scope.label)}</span></div>
+      <h2><a href="#news/${encodeURIComponent(model.id)}">${esc(model.title)}</a></h2>
+      <p class="article-summary">${esc(model.whatHappened)}</p>
       <div class="related-row"><strong>เกี่ยวข้องกับพอร์ต</strong><div>${related}</div></div>
-      <div class="analysis-box"><span class="eyebrow">วิเคราะห์ผลกระทบ</span><h3>${esc(analysis.headline)}</h3><p>${esc(analysis.reason)}</p><div class="decision-note"><strong>ใช้ตัดสินใจอย่างไร</strong><p>${esc(analysis.nextStep)}</p></div></div>
-      <div class="analysis-footer"><span>การวิเคราะห์ด้วยกฎจากเนื้อหาข่าว · ไม่ใช่คำแนะนำซื้อขาย</span>${article.title_th ? `<details class="original-news"><summary>ดูชื่อข่าวต้นฉบับ</summary><p lang="en">${esc(article.title)}</p></details>` : ""}</div>
+      <a class="reader-link" href="#news/${encodeURIComponent(model.id)}">อ่านสรุปภาษาไทยและแหล่งอ้างอิง →</a>
     </article>`;
   }).join("");
 }
@@ -314,6 +314,39 @@ function newsPage() {
     <section class="panel"><div class="panel-heading"><div><span class="eyebrow">PRIMARY SOURCES</span><h2>เอกสาร SEC ล่าสุด</h2></div></div>${filingList(state.sources.filter(s => holdingCompanies().some(c => c.id === s.company_id)).sort((a, b) => b.filed_at.localeCompare(a.filed_at)))}</section></div>`;
 }
 
+function articleReaderPage(articleId) {
+  const article = state.news.find(item => item.id === articleId);
+  const model = articleReadingModel(article, state.newsLinks, holdingIds(), state.companies);
+  if (!model) {
+    app.innerHTML = `<div class="page"><div class="empty-state"><h2>ไม่พบข่าวนี้</h2><p>ข่าวนี้อาจไม่อยู่ในพอร์ตของคุณ หรือไม่มีข้อมูลที่อนุญาตให้แสดง</p><a class="primary-button inline-button" href="#news">กลับไปหน้าข่าว</a></div></div>`;
+    return;
+  }
+  const facts = [
+    ...model.keyNumbers.map(item => `<li><strong>${esc(item.value || "")}</strong>${item.context ? `<span>${esc(item.context)}</span>` : ""}</li>`),
+    ...model.entities.map(item => `<li><strong>${esc(item)}</strong></li>`),
+  ];
+  const keyPoints = model.keyPoints.length ? `<ul>${model.keyPoints.map(item => `<li>${esc(item)}</li>`).join("")}</ul>` : `<p>ยังไม่มีประเด็นสรุปเพิ่มเติมจากแหล่งข่าว</p>`;
+  const watchPoints = model.watchPoints.length ? `<ul>${model.watchPoints.map(item => `<li>${esc(item)}</li>`).join("")}</ul>` : `<p>ติดตามรายละเอียดเพิ่มเติมจากแหล่งข่าวต้นฉบับและเอกสารบริษัท</p>`;
+  const evidence = model.evidence.length ? `<details class="reader-evidence"><summary>ดูข้อความอ้างอิงที่ระบบใช้สรุป</summary><ul>${model.evidence.map(item => `<li lang="en">${esc(item.text)}</li>`).join("")}</ul></details>` : "";
+  const related = model.relatedCompanies.map(company => `<a class="ticker-pill" href="#company/${esc(company.ticker)}">${esc(company.ticker)}</a>`).join("");
+  const original = model.originalUrl
+    ? `<a class="primary-button inline-button" href="${esc(model.originalUrl)}" target="_blank" rel="noopener noreferrer">เปิดข่าวต้นฉบับ ↗</a>`
+    : "";
+  app.innerHTML = `<div class="page reader-page">
+    <a class="back-link reader-back" href="#news">← กลับไปหน้าข่าว</a>
+    <article class="reader-card">
+      <header class="reader-header"><span class="eyebrow">THAI NEWS SUMMARY</span><h1>${esc(model.title)}</h1><div class="news-meta"><span>${esc(model.publisher)}</span><span>·</span><time datetime="${esc(model.publishedAt || "")}">${model.publishedAt ? new Date(model.publishedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }) : "ไม่ระบุเวลา"}</time></div></header>
+      <section><h2>เกิดอะไรขึ้น</h2><p>${esc(model.whatHappened)}</p></section>
+      <section><h2>ประเด็นสำคัญ</h2>${keyPoints}</section>
+      <section><h2>ตัวเลขและบริษัทที่ถูกกล่าวถึง</h2>${facts.length ? `<ul class="reader-facts">${facts.join("")}</ul>` : `<p>ยังไม่มีตัวเลขหรือชื่อหน่วยงานที่ระบบคัดจากแหล่งข่าว</p>`}</section>
+      <section><h2>หุ้นในพอร์ตที่เกี่ยวข้อง</h2><div class="reader-tickers">${related}</div></section>
+      <section><h2>สิ่งที่น่าสนใจ/ควรติดตาม</h2>${watchPoints}</section>
+      <section class="reader-scope"><h2>${esc(model.scope.label)}</h2><p>${esc(model.scope.limitation)}</p>${evidence}</section>
+      <footer class="reader-footer">${original}<details class="original-news"><summary>ดูหัวข้อและบทคัดย่อภาษาอังกฤษ</summary><p lang="en"><strong>${esc(model.originalTitle)}</strong></p>${model.rssExcerpt ? `<p lang="en">${esc(model.rssExcerpt)}</p>` : ""}</details></footer>
+    </article>
+  </div>`;
+}
+
 function render() {
   const pipelineStatus = document.querySelector("#pipelineStatus");
   if (pipelineStatus) pipelineStatus.textContent = state.loading ? "กำลังอ่านฐานข้อมูล" : state.error ? "การเชื่อมต่อมีปัญหา" : localMode ? "SQLite Local mode" : "Supabase production mode";
@@ -321,7 +354,9 @@ function render() {
   if (state.error) return errorView();
   const route = (location.hash || "#dashboard").slice(1);
   document.querySelectorAll(".main-nav a").forEach(a => a.classList.toggle("active", route.startsWith(a.dataset.route)));
+  const readerId = articleRouteId(route);
   if (route === "portfolio") portfolioPage();
+  else if (readerId) articleReaderPage(readerId);
   else if (route === "news") newsPage();
   else if (route.startsWith("company/")) companyPage(route.split("/")[1]);
   else dashboard();
@@ -361,7 +396,7 @@ window.loadData = async function () {
       db.from("source_documents").select("id,company_id,form,title,original_url,filed_at,fiscal_year,fiscal_period").order("filed_at", { ascending: false }).limit(200),
       db.from("stock_prices").select("company_id,trade_date,open,high,low,close,adjusted_close,volume,source").order("trade_date").limit(5000),
       db.from("company_events").select("id,company_id,event_date,event_type,title_th,summary_th,lesson_th,source_title,source_url").order("event_date"),
-      db.from("stock_news").select("id,company_id,title,title_th,summary,summary_th,source_name,source_url,published_at,category,fetched_at,translation_provider").order("published_at", { ascending: false }).limit(100),
+      db.from("stock_news").select("*").order("published_at", { ascending: false }).limit(100),
       db.from("news_company_links").select("news_id,company_id,discovery_tickers,explicit_mention,title_mention,relevance_score,matched_aliases"),
       db.from("news_sync_runs").select("finished_at,status,articles_found,articles_saved").order("started_at", { ascending: false }).limit(1).maybeSingle()
     ]);

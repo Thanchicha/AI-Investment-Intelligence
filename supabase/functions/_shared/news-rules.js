@@ -203,6 +203,58 @@ export function relatedHeldCompanies(articleId, links = [], holdingIds = [], com
     .filter((company) => company && !seen.has(company.id) && (seen.add(company.id), true));
 }
 
+export function articleRouteId(route = "") {
+  const match = String(route).replace(/^#/, "").match(/^news\/([^/?#]+)$/);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function readerTextList(value, limit = 5) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim()).slice(0, limit);
+}
+
+function readerEvidence(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => typeof item === "string" ? { text: item } : item)
+    .filter((item) => item && typeof item.text === "string" && item.text.trim())
+    .slice(0, 3)
+    .map((item) => ({ text: item.text.trim().slice(0, 200) }));
+}
+
+export function articleReadingModel(article, articleLinks = [], holdingIds = [], companies = []) {
+  if (!article?.id) return null;
+  const relatedCompanies = relatedHeldCompanies(article.id, articleLinks, holdingIds, companies);
+  if (!relatedCompanies.length) return null;
+  const articlePage = article.content_scope === "article_page";
+  const title = String(article.title_th || article.title || "ข่าวที่ไม่มีหัวข้อ").trim();
+  return {
+    id: article.id,
+    title,
+    publisher: String(article.source_name || "ไม่ระบุแหล่งข่าว"),
+    publishedAt: article.published_at || null,
+    originalUrl: article.source_url || null,
+    whatHappened: String(article.what_happened_th || article.summary_th || article.summary || "ยังไม่มีบทสรุปจากแหล่งข่าว").trim(),
+    keyPoints: readerTextList(article.key_points_th),
+    keyNumbers: Array.isArray(article.key_numbers) ? article.key_numbers.slice(0, 6) : [],
+    entities: readerTextList(article.entities_th, 8),
+    relatedCompanies,
+    watchPoints: readerTextList(article.watch_points_th),
+    evidence: readerEvidence(article.source_evidence),
+    scope: articlePage
+      ? { key: "article_page", label: "สรุปจากหน้าเว็บต้นฉบับ", limitation: "สรุปจากข้อความบางส่วนของบทความ ไม่ใช่คำแปลฉบับเต็ม" }
+      : { key: "rss_excerpt", label: "สรุปจาก RSS", limitation: "ข้อมูลอ้างอิงหัวข้อและบทคัดย่อ RSS ซึ่งอาจมีรายละเอียดจำกัด" },
+    originalTitle: String(article.title || "").trim(),
+    rssExcerpt: String(article.summary || "").trim(),
+    sections: ["what_happened", "key_points", "facts", "companies", "watch_points", "scope", "original"],
+  };
+}
+
 export function extractKeyNumbers(text) {
   const source = cleanText(text);
   if (!source) return [];
