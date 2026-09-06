@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="ภาพรวมพอร์ตหุ้นสหรัฐฯ และข่าวสำคัญฉบับภาษาไทย" />
+    <title>Longview — Investment Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Manrope:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css?v=20260905-1" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#dashboard" aria-label="Longview home">
+          <span class="brand-mark">L</span>
+          <span><strong>Longview</strong><small>Investment Intelligence</small></span>
+        </a>
+
+        <nav class="main-nav" aria-label="เมนูหลัก">
+          <a href="#dashboard" data-route="dashboard" class="active"><span class="nav-icon">⌂</span>อัปเดตข่าว</a>
+          <a href="#portfolio" data-route="portfolio"><span class="nav-icon">◫</span>พอร์ตของฉัน</a>
+          <a href="#news" data-route="news"><span class="nav-icon">◉</span>ข่าวที่เกี่ยวข้อง</a>
+        </nav>
+
+        <div class="sidebar-card">
+          <span class="live-dot"></span>
+          <div><strong>SEC data pipeline</strong><small id="pipelineStatus">รอการเชื่อมต่อ Supabase</small></div>
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="avatar">KS</div>
+          <div><strong>บัญชีส่วนตัว</strong><small>นักลงทุนระยะยาว</small></div>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <button class="menu-button" id="menuButton" aria-label="เปิดเมนู">☰</button>
+          <div class="market-pill"><span></span> SEC EDGAR · SQLite local / Supabase production</div>
+          <div class="top-actions">
+            <button class="icon-button" aria-label="การแจ้งเตือน">♢<span class="notification-dot"></span></button>
+            <button class="add-button" id="openAddStock"><span>＋</span> เพิ่มหุ้น</button>
+          </div>
+        </header>
+
+        <section id="app" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <dialog id="stockDialog" class="stock-dialog">
+      <form method="dialog" id="stockForm">
+        <div class="dialog-heading">
+          <div><span class="eyebrow">PORTFOLIO</span><h2>เพิ่มหุ้นที่คุณติดตาม</h2></div>
+          <button class="close-button" value="cancel" aria-label="ปิด">×</button>
+        </div>
+        <p>เลือกบริษัทในรายการตัวอย่าง ข้อมูลจะถูกเก็บไว้ในเบราว์เซอร์เครื่องนี้</p>
+        <label for="tickerSelect">บริษัท</label>
+        <select id="tickerSelect" required></select>
+        <div class="dialog-actions">
+          <button class="secondary-button" value="cancel">ยกเลิก</button>
+          <button class="primary-button" value="default">เพิ่มเข้าพอร์ต</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="app-v2.js?v=20260905-4"></script>
+  </body>
+</html>

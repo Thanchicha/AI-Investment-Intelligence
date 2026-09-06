@@ -1,0 +1,12 @@
+{
+  "name": "longview-investment-intelligence",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "supabase": "supabase"
+  },
+  "devDependencies": {
+    "supabase": "latest"
+  }
+}
