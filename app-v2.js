@@ -1,3 +1,5 @@
+import { articlesForHoldings, relatedHeldCompanies } from "./supabase/functions/_shared/news-rules.js";
+
 const config = window.LONGVIEW_CONFIG || {};
 const configured = Boolean(config.supabaseUrl && config.supabasePublishableKey && window.supabase);
 const db = configured ? window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey) : null;
@@ -5,7 +7,7 @@ const localMode = !configured;
 
 const colors = { GOOGL: "#3d6ea8", NVDA: "#4f8a51", MSFT: "#6d748d", AAPL: "#4e5961", AMZN: "#866338", META: "#496e96" };
 const metricLabels = { revenue: "รายได้", net_income: "กำไรสุทธิ", diluted_eps: "EPS ปรับลด" };
-const state = { session: null, companies: [], holdings: [], facts: [], sources: [], prices: [], events: [], news: [], newsSync: null, loading: true, error: null };
+const state = { session: null, companies: [], holdings: [], facts: [], sources: [], prices: [], events: [], news: [], newsLinks: [], newsSync: null, loading: true, error: null };
 
 const app = document.querySelector("#app");
 const dialog = document.querySelector("#stockDialog");
@@ -66,6 +68,8 @@ function growthFor(companyId) {
 
 function badge(status) { return `<span class="badge ${status.key}">${esc(status.label)}</span>`; }
 function holdingCompanies() { return state.holdings.map(h => state.companies.find(c => c.id === h.company_id)).filter(Boolean); }
+function holdingIds() { return state.holdings.map(holding => holding.company_id); }
+function portfolioNews() { return articlesForHoldings(state.news, state.newsLinks, holdingIds()); }
 
 function loadingView(message = "กำลังโหลดข้อมูลจาก Supabase…") {
   app.innerHTML = `<div class="page"><div class="empty-state"><span class="live-dot" style="display:inline-block;margin-right:10px"></span>${message}</div></div>`;
@@ -122,10 +126,8 @@ const companyAliases = {
 
 function analyzeNews(article) {
   const text = `${article.title || ""} ${article.summary || ""}`.toLowerCase();
-  const portfolio = holdingCompanies();
-  let related = portfolio.filter(company => (companyAliases[company.ticker] || [company.ticker.toLowerCase()]).some(alias => text.includes(alias)));
-  const primary = state.companies.find(company => company.id === article.company_id);
-  if (primary && portfolio.some(company => company.id === primary.id) && !related.some(company => company.id === primary.id)) related.unshift(primary);
+  const related = relatedHeldCompanies(article.id, state.newsLinks, holdingIds(), state.companies);
+  const primary = related[0] || null;
 
   const riskTerms = ["antitrust", "lawsuit", "decline", "drop", "slowing", "shrink", "loss", "fine", "ban", "investigation", "competition", "pressure", "risk", "sell", "collapse", "cut", "weaken"];
   const positiveTerms = ["growth", "win", "approval", "partnership", "expand", "record", "beat", "profit", "launch", "contract", "validation", "benefit"];
@@ -147,11 +149,13 @@ function analyzeNews(article) {
   return { ...impact, score, related, nextStep, evidence: [...riskHits, ...positiveHits].slice(0, 4) };
 }
 
-function newsAnalysisCards(limit = 8) {
+function newsAnalysisCards(limit = 8, articles = portfolioNews()) {
   const categoryLabels = { earnings: "งบและคาดการณ์", ai_cloud: "AI และ Cloud", regulation: "กฎหมาย", core_business: "ธุรกิจหลัก", company: "บริษัท" };
-  const articles = state.news.slice(0, limit);
-  if (!articles.length) return `<div class="empty-state"><h3>ยังไม่มีข่าวล่าสุด</h3><p>ระบบกำลังรอการอัปเดตข่าวรอบถัดไป</p></div>`;
-  return articles.map(article => {
+  if (!articles.length) {
+    const message = holdingIds().length ? "ยังไม่มีข่าวล่าสุดสำหรับหุ้นที่คุณติดตาม" : "เพิ่มหุ้นในพอร์ตเพื่อรับข่าวที่เกี่ยวข้อง";
+    return `<div class="empty-state"><h3>${message}</h3></div>`;
+  }
+  return articles.slice(0, limit).map(article => {
     const analysis = analyzeNews(article);
     const related = analysis.related.length ? analysis.related.map(company => `<a class="ticker-pill" href="#company/${esc(company.ticker)}">${esc(company.ticker)}</a>`).join("") : `<span class="ticker-pill muted">ไม่พบหุ้นในพอร์ต</span>`;
     return `<article class="analysis-card risk-${analysis.key}">
@@ -167,18 +171,19 @@ function newsAnalysisCards(limit = 8) {
 
 function dashboard() {
   const companies = holdingCompanies();
-  const analyzed = state.news.map(analyzeNews);
+  const articles = portfolioNews();
+  const analyzed = articles.map(analyzeNews);
   const increased = analyzed.filter(item => item.key === "increase").length;
   const impacted = new Set(analyzed.flatMap(item => item.related.map(company => company.ticker)));
   const latest = state.newsSync?.finished_at ? new Date(state.newsSync.finished_at).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }) : "กำลังรอรอบแรก";
   app.innerHTML = `<div class="page">
     ${pageHeader("PORTFOLIO NEWS INTELLIGENCE", "วันนี้มีอะไรเปลี่ยนความเสี่ยงในพอร์ต", "ข่าวล่าสุดพร้อมวิเคราะห์ความเกี่ยวข้อง ผลกระทบต่อความเสี่ยง และประเด็นที่ควรตรวจสอบก่อนตัดสินใจ")}
     <div class="summary-grid">
-      <div class="summary-card"><div class="label">ข่าวที่วิเคราะห์ <span class="mini-icon">◉</span></div><div class="value">${state.news.length}</div><div class="detail">อัปเดตล่าสุด ${esc(latest)}</div></div>
+      <div class="summary-card"><div class="label">ข่าวที่วิเคราะห์ <span class="mini-icon">◉</span></div><div class="value">${articles.length}</div><div class="detail">อัปเดตล่าสุด ${esc(latest)}</div></div>
       <div class="summary-card"><div class="label">สัญญาณเพิ่มความเสี่ยง <span class="mini-icon">!</span></div><div class="value">${increased}</div><div class="detail">ควรเปิดอ่านหลักฐานและติดตามตัวเลขยืนยัน</div></div>
       <div class="summary-card"><div class="label">หุ้นในพอร์ตที่เกี่ยวข้อง <span class="mini-icon">◫</span></div><div class="value">${impacted.size}/${companies.length}</div><div class="detail">จับคู่จากบริษัท ผลิตภัณฑ์ และธุรกิจที่กล่าวถึง</div></div>
     </div>
-    <div class="intelligence-layout"><div class="analysis-feed"><div class="section-title"><div><span class="eyebrow">LATEST ANALYSIS</span><h2>ข่าวที่กระทบพอร์ตล่าสุด</h2></div><a class="text-link" href="#news">ดูข่าวทั้งหมด →</a></div>${newsAnalysisCards(6)}</div>
+    <div class="intelligence-layout"><div class="analysis-feed"><div class="section-title"><div><span class="eyebrow">LATEST ANALYSIS</span><h2>ข่าวที่กระทบพอร์ตล่าสุด</h2></div><a class="text-link" href="#news">ดูข่าวทั้งหมด →</a></div>${newsAnalysisCards(6, articles)}</div>
       <aside class="panel risk-radar"><span class="eyebrow">PORTFOLIO RADAR</span><h2>หุ้นที่ข่าวกำลังกล่าวถึง</h2><div class="radar-list">${companies.map(company => { const count = analyzed.filter(item => item.related.some(row => row.id === company.id)).length; const risk = analyzed.filter(item => item.key === "increase" && item.related.some(row => row.id === company.id)).length; return `<a href="#company/${esc(company.ticker)}" class="radar-item"><div>${companyLogo(company, true)}<strong>${esc(company.ticker)}</strong></div><span>${count} ข่าว · ${risk} เสี่ยงเพิ่ม</span></a>`; }).join("")}</div><div class="source-card">สัญญาณข่าวเป็นจุดเริ่มต้นของการค้นคว้า ควรยืนยันกับงบ SEC และแหล่งข่าวต้นฉบับเสมอ</div></aside>
     </div>
   </div>`;
@@ -305,7 +310,7 @@ function newsPage() {
   const latest = state.newsSync?.finished_at ? new Date(state.newsSync.finished_at) : null;
   const status = latest ? `อัปเดตล่าสุด ${latest.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })} · ระบบตรวจทุก 30 นาที` : "กำลังรอการอัปเดตข่าวรอบแรก";
   app.innerHTML = `<div class="page">${pageHeader("LIVE NEWS ANALYSIS", "วิเคราะห์ข่าวที่เกี่ยวข้องกับพอร์ต", "เชื่อมข่าวกับบริษัทที่คุณถืออยู่ พร้อมประเมินทิศทางความเสี่ยงและคำถามที่ต้องหาคำตอบต่อ")}
-    <section class="analysis-feed"><div class="section-title"><div><span class="eyebrow">AUTO REFRESH</span><h2>ข่าวและบทวิเคราะห์ล่าสุด</h2></div><span class="as-of">${esc(status)}</span></div>${newsAnalysisCards(100)}</section>
+    <section class="analysis-feed"><div class="section-title"><div><span class="eyebrow">AUTO REFRESH</span><h2>ข่าวและบทวิเคราะห์ล่าสุด</h2></div><span class="as-of">${esc(status)}</span></div>${newsAnalysisCards(100, portfolioNews())}</section>
     <section class="panel"><div class="panel-heading"><div><span class="eyebrow">PRIMARY SOURCES</span><h2>เอกสาร SEC ล่าสุด</h2></div></div>${filingList(state.sources.filter(s => holdingCompanies().some(c => c.id === s.company_id)).sort((a, b) => b.filed_at.localeCompare(a.filed_at)))}</section></div>`;
 }
 
@@ -338,6 +343,7 @@ window.loadData = async function () {
       state.prices = payload.prices || [];
       state.events = payload.events || [];
       state.news = payload.news || [];
+      state.newsLinks = payload.newsLinks || [];
       state.newsSync = payload.newsSync || null;
       return;
     }
@@ -348,7 +354,7 @@ window.loadData = async function () {
       state.session = data.session;
     } else state.session = sessionData.session;
 
-    const [companiesResult, holdingsResult, factsResult, sourcesResult, pricesResult, eventsResult, newsResult, newsSyncResult] = await Promise.all([
+    const [companiesResult, holdingsResult, factsResult, sourcesResult, pricesResult, eventsResult, newsResult, newsLinksResult, newsSyncResult] = await Promise.all([
       db.from("companies").select("id,ticker,cik,legal_name,sector,last_sec_sync_at").eq("active", true).order("ticker"),
       db.from("portfolio_holdings").select("id,company_id,user_id").order("created_at"),
       db.from("financial_facts").select("id,company_id,source_document_id,metric,value,unit,period_start,period_end,form,filed_at,accession_number,taxonomy_concept").order("filed_at", { ascending: false }).limit(1000),
@@ -356,9 +362,10 @@ window.loadData = async function () {
       db.from("stock_prices").select("company_id,trade_date,open,high,low,close,adjusted_close,volume,source").order("trade_date").limit(5000),
       db.from("company_events").select("id,company_id,event_date,event_type,title_th,summary_th,lesson_th,source_title,source_url").order("event_date"),
       db.from("stock_news").select("id,company_id,title,title_th,summary,summary_th,source_name,source_url,published_at,category,fetched_at,translation_provider").order("published_at", { ascending: false }).limit(100),
+      db.from("news_company_links").select("news_id,company_id,discovery_tickers,explicit_mention,title_mention,relevance_score,matched_aliases"),
       db.from("news_sync_runs").select("finished_at,status,articles_found,articles_saved").order("started_at", { ascending: false }).limit(1).maybeSingle()
     ]);
-    const failed = [companiesResult, holdingsResult, factsResult, sourcesResult, pricesResult, eventsResult, newsResult, newsSyncResult].find(result => result.error);
+    const failed = [companiesResult, holdingsResult, factsResult, sourcesResult, pricesResult, eventsResult, newsResult, newsLinksResult, newsSyncResult].find(result => result.error);
     if (failed) throw failed.error;
     state.companies = companiesResult.data || [];
     state.holdings = holdingsResult.data || [];
@@ -367,6 +374,7 @@ window.loadData = async function () {
     state.prices = pricesResult.data || [];
     state.events = eventsResult.data || [];
     state.news = newsResult.data || [];
+    state.newsLinks = newsLinksResult.data || [];
     state.newsSync = newsSyncResult.data || null;
   } catch (error) {
     state.error = error.message || String(error);

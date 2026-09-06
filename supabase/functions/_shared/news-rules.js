@@ -180,6 +180,29 @@ export function matchCompanies(title, excerpt, companies = SUPPORTED_COMPANIES) 
   });
 }
 
+export function articlesForHoldings(news = [], links = [], holdingIds = []) {
+  const heldCompanyIds = new Set(holdingIds);
+  if (heldCompanyIds.size === 0) return [];
+  const visibleNewsIds = new Set(
+    links
+      .filter((link) => heldCompanyIds.has(link.company_id) && link.explicit_mention !== false)
+      .map((link) => link.news_id),
+  );
+  return news
+    .filter((article) => visibleNewsIds.has(article.id))
+    .sort((left, right) => String(right.published_at ?? "").localeCompare(String(left.published_at ?? "")));
+}
+
+export function relatedHeldCompanies(articleId, links = [], holdingIds = [], companies = []) {
+  const heldCompanyIds = new Set(holdingIds);
+  const companyById = new Map(companies.map((company) => [company.id, company]));
+  const seen = new Set();
+  return links
+    .filter((link) => link.news_id === articleId && heldCompanyIds.has(link.company_id) && link.explicit_mention !== false)
+    .map((link) => companyById.get(link.company_id))
+    .filter((company) => company && !seen.has(company.id) && (seen.add(company.id), true));
+}
+
 export function extractKeyNumbers(text) {
   const source = cleanText(text);
   if (!source) return [];
