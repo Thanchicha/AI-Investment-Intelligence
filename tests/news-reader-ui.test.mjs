@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   articleReadingModel,
   articleRouteId,
+  newsImageModel,
 } from "../supabase/functions/_shared/news-rules.js";
 
 const companies = [
@@ -72,4 +73,11 @@ test("labels an RSS fallback and keeps English transparency fields", () => {
   assert.match(model.scope.label, /RSS/);
   assert.equal(model.originalTitle, article.title);
   assert.equal(model.rssExcerpt, article.summary);
+});
+
+test("selects a compact category card without an image URL", () => {
+  assert.deepEqual(newsImageModel({ ...article, image_url: "https://cdn.example.com/google.png", category: "ai_cloud" }), {
+    category: "ai_cloud",
+    label: "AI และ Cloud",
+  });
 });

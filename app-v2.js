@@ -18,6 +18,13 @@ function esc(value = "") {
   return String(value).replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
 }
 
+const newsImageIcons = { earnings: "▥", ai_cloud: "✦", regulation: "⚖", core_business: "◈", company: "◎" };
+
+function newsCategoryMarkup(image) {
+  if (!image) return "";
+  return `<span class="news-category-card news-category-${esc(image.category)}"><span class="news-image-icon" aria-hidden="true">${newsImageIcons[image.category] || newsImageIcons.company}</span><strong>${esc(image.label)}</strong></span>`;
+}
+
 function formatMoney(value, unit) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "—";
@@ -160,7 +167,7 @@ function newsAnalysisCards(limit = 8, articles = portfolioNews()) {
     if (!model) return "";
     const related = model.relatedCompanies.map(company => `<a class="ticker-pill" href="#company/${esc(company.ticker)}">${esc(company.ticker)}</a>`).join("");
     return `<article class="analysis-card news-card">
-      <div class="analysis-card-top"><div class="news-meta"><span class="topic">${esc(categoryLabels[article.category] || "บริษัท")}</span><span>${esc(model.publisher)}</span><span>·</span><time datetime="${esc(model.publishedAt || "")}">${model.publishedAt ? new Date(model.publishedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }) : "ไม่ระบุเวลา"}</time></div><span class="scope-badge">${esc(model.scope.label)}</span></div>
+      <div class="analysis-card-top"><div class="news-meta">${newsCategoryMarkup(model.image)}<span>${esc(model.publisher)}</span><span>·</span><time datetime="${esc(model.publishedAt || "")}">${model.publishedAt ? new Date(model.publishedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }) : "ไม่ระบุเวลา"}</time></div><span class="scope-badge">${esc(model.scope.label)}</span></div>
       <h2><a href="#news/${encodeURIComponent(model.id)}">${esc(model.title)}</a></h2>
       <p class="article-summary">${esc(model.whatHappened)}</p>
       <div class="related-row"><strong>เกี่ยวข้องกับพอร์ต</strong><div>${related}</div></div>
@@ -335,7 +342,7 @@ function articleReaderPage(articleId) {
   app.innerHTML = `<div class="page reader-page">
     <a class="back-link reader-back" href="#news">← กลับไปหน้าข่าว</a>
     <article class="reader-card">
-      <header class="reader-header"><span class="eyebrow">THAI NEWS SUMMARY</span><h1>${esc(model.title)}</h1><div class="news-meta"><span>${esc(model.publisher)}</span><span>·</span><time datetime="${esc(model.publishedAt || "")}">${model.publishedAt ? new Date(model.publishedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }) : "ไม่ระบุเวลา"}</time></div></header>
+      <header class="reader-header"><span class="eyebrow">THAI NEWS SUMMARY</span><div>${newsCategoryMarkup(model.image)}</div><h1>${esc(model.title)}</h1><div class="news-meta"><span>${esc(model.publisher)}</span><span>·</span><time datetime="${esc(model.publishedAt || "")}">${model.publishedAt ? new Date(model.publishedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }) : "ไม่ระบุเวลา"}</time></div></header>
       <section><h2>เกิดอะไรขึ้น</h2><p>${esc(model.whatHappened)}</p></section>
       <section><h2>ประเด็นสำคัญ</h2>${keyPoints}</section>
       <section><h2>ตัวเลขและบริษัทที่ถูกกล่าวถึง</h2>${facts.length ? `<ul class="reader-facts">${facts.join("")}</ul>` : `<p>ยังไม่มีตัวเลขหรือชื่อหน่วยงานที่ระบบคัดจากแหล่งข่าว</p>`}</section>

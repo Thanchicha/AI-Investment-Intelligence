@@ -227,6 +227,19 @@ function readerEvidence(value) {
     .map((item) => ({ text: item.text.trim().slice(0, 200) }));
 }
 
+const NEWS_IMAGE_FALLBACKS = Object.freeze({
+  earnings: "งบและคาดการณ์",
+  ai_cloud: "AI และ Cloud",
+  regulation: "กฎระเบียบ",
+  core_business: "ธุรกิจหลัก",
+  company: "ข่าวบริษัท",
+});
+
+export function newsImageModel(article = {}) {
+  const category = Object.hasOwn(NEWS_IMAGE_FALLBACKS, article.category) ? article.category : "company";
+  return { category, label: NEWS_IMAGE_FALLBACKS[category] };
+}
+
 export function articleReadingModel(article, articleLinks = [], holdingIds = [], companies = []) {
   if (!article?.id) return null;
   const relatedCompanies = relatedHeldCompanies(article.id, articleLinks, holdingIds, companies);
@@ -239,6 +252,7 @@ export function articleReadingModel(article, articleLinks = [], holdingIds = [],
     publisher: String(article.source_name || "ไม่ระบุแหล่งข่าว"),
     publishedAt: article.published_at || null,
     originalUrl: article.source_url || null,
+    image: newsImageModel(article),
     whatHappened: String(article.what_happened_th || article.summary_th || article.summary || "ยังไม่มีบทสรุปจากแหล่งข่าว").trim(),
     keyPoints: readerTextList(article.key_points_th),
     keyNumbers: Array.isArray(article.key_numbers) ? article.key_numbers.slice(0, 6) : [],
