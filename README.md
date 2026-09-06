@@ -2,6 +2,28 @@
 
 Thai-first portfolio intelligence backed by Supabase and official SEC EDGAR data.
 
+## News reader (seven-company scope)
+
+The news experience is portfolio-first: Dashboard and `#news` show only stories
+linked to the signed-in user's holdings through `news_company_links`. The supported
+company universe is `GOOGL`, `MSFT`, `AAPL`, `META`, `TSLA`, `NVDA`, and `AMZN`.
+An empty portfolio intentionally shows no global news.
+
+Each story has an internal `#news/<article-id>` reader with a factual Thai summary,
+key points, grounded numbers, related held companies, source evidence, and a direct
+link to the original publisher. The app stores short derived fields and evidence,
+not full publisher article bodies. If a publisher page cannot be read, the system
+labels the result as an RSS excerpt and keeps the limitation visible.
+The reader is an educational reference, not a buy/sell recommendation; any optional
+rule-based signals are kept separate from the factual summary and should be checked
+against the original source and company filings.
+
+News ingestion runs through the secured `ingest-news` Edge Function. It reads Yahoo
+Finance RSS feeds for the seven tickers every 30 minutes, attempts bounded public
+publisher-page extraction, and translates only selected fields through the free
+MyMemory path. Translation is best-effort and may be unavailable or rate-limited.
+Category cards are rendered locally; the app does not download or store news images.
+
 ## Local mode (recommended while Supabase is unavailable)
 
 The app automatically uses SQLite when `config.js` does not contain Supabase credentials.
@@ -53,6 +75,8 @@ Restart `server.py`, open GOOGL, and press **ดึงราคาย้อน�
 - Public-company financial data is readable only by authenticated users
 - `ingest-sec` Edge Function fetches SEC Company Facts and writes with service-role access
 - Every financial fact points to its original SEC filing
+- News records are visible only through authenticated portfolio-linked rows
+- Ingestion uses bounded fetches, public-URL validation, and no stored full article HTML
 
 ## 1. Create and configure Supabase
 
@@ -102,7 +126,32 @@ Invoke-RestMethod `
   -Body '{"tickers":["GOOGL","NVDA","MSFT","AAPL"]}'
 ```
 
-For scheduled ingestion, store the same secret in Supabase Vault and use Supabase Cron to POST to the function. A daily schedule is sufficient for SEC filings.
+For scheduled ingestion, store the news secret in Supabase Vault and use Supabase Cron
+to POST to `ingest-news` every 30 minutes. Keep the ingestion function protected by
+its configured secret; never place that secret in `config.js` or frontend code.
+
+The SEC function can use a daily schedule because filings are not real-time. The news
+function uses the seven-company schedule created by the news migrations.
+
+## Verification
+
+Run the complete local suite after changes:
+
+```powershell
+npm test
+```
+
+Expected result: zero failures, skips, cancellations, or warnings. Before production
+release, also confirm that the latest migrations are applied, `ingest-news` is active
+with its intended JWT setting, the Vault secret exists, and one trusted invocation
+returns seven feed entries with article/link and extraction/fallback counts. Inspect
+representative `stock_news` rows to confirm evidence is bounded and no full article
+body is persisted.
+
+Current linked-project check (2026-09-06): local and remote migrations match through
+`202609060001`; `ingest-sec`, `ingest-news`, and `ingest-prices` are `ACTIVE` with JWT
+verification enabled. A live news invocation is intentionally not included here because
+it requires the private Vault ingestion secret.
 
 ## 4. Run locally
 
