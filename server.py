@@ -46,6 +46,7 @@ COMPANIES = [
     ("AAPL", "0000320193", "Apple Inc.", "Technology · Consumer electronics"),
     ("AMZN", "0001018724", "Amazon.com, Inc.", "Consumer · Cloud infrastructure"),
     ("META", "0001326801", "Meta Platforms, Inc.", "Technology · Digital advertising"),
+    ("TSLA", "0001318605", "Tesla, Inc.", "Consumer · Electric vehicles"),
 ]
 
 CONCEPTS = {
@@ -121,6 +122,27 @@ GOOGL_EVENTS = [
      "Alphabet 2023 Q4 Earnings Call", "https://abc.xyz/investor/events/event-details/2024/2023-q4-earnings-call/"),
 ]
 
+OTHER_EVENTS = [
+    ("MSFT", "msft-cloud-2014", "2014-02-04", "structural_change", "เปลี่ยนแกนสู่ Cloud-first", "Microsoft วาง Azure และบริการคลาวด์เป็นแกนหลักของการเติบโตระยะยาว.", "การเปลี่ยนโมเดลรายได้ไปสู่บริการแบบสมาชิกอาจยกระดับความต่อเนื่องของรายได้ แต่ต้องติดตามต้นทุนโครงสร้างพื้นฐาน.", "Microsoft Investor Relations", "https://www.microsoft.com/en-us/annualreports"),
+    ("MSFT", "msft-pandemic-2020", "2020-06-30", "growth_engine", "การทำงานทางไกลเร่งการใช้ Cloud", "การทำงานและการเรียนทางไกลเพิ่มความต้องการผลิตภัณฑ์ Cloud, Teams และบริการองค์กร.", "แรงส่งจากเหตุการณ์ภายนอกควรแยกจากการเติบโตที่ยั่งยืนของลูกค้าและอัตรากำไร.", "Microsoft 2020 Annual Report", "https://www.microsoft.com/en-us/annualreports/ar2020/index.html"),
+    ("MSFT", "msft-activision-2023", "2023-10-13", "structural_change", "ปิดดีล Activision Blizzard", "Microsoft ปิดการเข้าซื้อ Activision Blizzard เพื่อขยายธุรกิจเกมและคอนเทนต์.", "การซื้อกิจการขนาดใหญ่ต้องติดตามการผสานธุรกิจ ผลตอบแทนจากเงินลงทุน และการกำกับดูแล.", "Microsoft News Center", "https://news.microsoft.com/"),
+    ("AAPL", "aapl-services-2019", "2019-09-28", "growth_engine", "ธุรกิจบริการมีบทบาทมากขึ้น", "Apple รายงานการขยายตัวของบริการดิจิทัลควบคู่กับฐานอุปกรณ์ที่ติดตั้งอยู่จำนวนมาก.", "รายได้บริการช่วยกระจายความพึ่งพายอดขายฮาร์ดแวร์ แต่ควรติดตามการแข่งขันและกฎระเบียบของแพลตฟอร์ม.", "Apple Investor Relations", "https://investor.apple.com/"),
+    ("AAPL", "aapl-supply-2020", "2020-03-28", "crisis", "COVID-19 กระทบห่วงโซ่อุปทาน", "การระบาดทำให้ Apple เผชิญความไม่แน่นอนของการผลิตและการเปิดร้านค้าในหลายประเทศ.", "บริษัทฮาร์ดแวร์ระดับโลกมีความเสี่ยงจากห่วงโซ่อุปทาน แม้ความต้องการของลูกค้าอาจฟื้นตัวภายหลัง.", "Apple 2020 Form 10-K", "https://investor.apple.com/sec-filings/default.aspx"),
+    ("AAPL", "aapl-silicon-2020", "2020-11-10", "structural_change", "เริ่มเปลี่ยน Mac สู่ Apple silicon", "Apple เปิดตัวชิป Apple silicon สำหรับ Mac เพื่อควบคุมเทคโนโลยีสำคัญของผลิตภัณฑ์มากขึ้น.", "การบูรณาการเทคโนโลยีเองอาจสร้างความแตกต่างของผลิตภัณฑ์ แต่ใช้เวลาและเงินลงทุนต่อเนื่อง.", "Apple Newsroom", "https://www.apple.com/newsroom/"),
+    ("META", "meta-privacy-2021", "2021-09-30", "slowdown", "การเปลี่ยนนโยบายความเป็นส่วนตัวกระทบโฆษณา", "การเปลี่ยนแปลงด้านความเป็นส่วนตัวของระบบปฏิบัติการทำให้การวัดผลและการกำหนดเป้าหมายโฆษณายากขึ้น.", "ธุรกิจโฆษณาดิจิทัลพึ่งพาข้อมูลและการวัดผล จึงควรติดตามผลของกฎแพลตฟอร์มและกฎระเบียบ.", "Meta Investor Relations", "https://investor.atmeta.com/financials/default.aspx"),
+    ("META", "meta-efficiency-2023", "2023-12-31", "structural_change", "ปีแห่งประสิทธิภาพ", "Meta ปรับโครงสร้างต้นทุนและให้ความสำคัญกับประสิทธิภาพการดำเนินงานหลังช่วงการลงทุนสูง.", "การลดต้นทุนอาจช่วยกำไรระยะสั้น แต่การประเมินต้องดูว่ายังรักษาการลงทุนในผลิตภัณฑ์และการแข่งขันได้หรือไม่.", "Meta 2023 Annual Report", "https://investor.atmeta.com/financials/default.aspx"),
+    ("META", "meta-ai-2024", "2024-03-31", "growth_engine", "AI สนับสนุนการมีส่วนร่วมและโฆษณา", "Meta รายงานการลงทุนใน AI เพื่อพัฒนาการแนะนำคอนเทนต์และเครื่องมือโฆษณา.", "ผลตอบแทนจาก AI ควรติดตามผ่านการใช้งาน รายได้โฆษณา และค่าใช้จ่ายโครงสร้างพื้นฐาน.", "Meta Investor Relations", "https://investor.atmeta.com/"),
+    ("TSLA", "tsla-model3-2017", "2017-07-28", "growth_engine", "เริ่มส่งมอบ Model 3", "Tesla เริ่มส่งมอบ Model 3 ซึ่งเป็นก้าวสำคัญในการขยายตลาดรถยนต์ไฟฟ้าสู่ปริมาณมากขึ้น.", "การขยายกำลังผลิตเป็นจุดเปลี่ยนสำคัญ แต่ต้องติดตามต้นทุน คุณภาพ และกระแสเงินสดควบคู่กัน.", "Tesla Investor Relations", "https://ir.tesla.com/"),
+    ("TSLA", "tsla-profitability-2020", "2020-12-31", "growth_engine", "ทำกำไรต่อเนื่องและขยายโรงงาน", "Tesla รายงานปีที่ทำกำไรและขยายกำลังผลิตผ่านโรงงานใหม่หลายแห่ง.", "การเปลี่ยนจากการเติบโตที่ใช้เงินทุนสูงสู่กำไรต้องวัดด้วยอัตรากำไร กระแสเงินสด และการแข่งขัน.", "Tesla 2020 Annual Report", "https://ir.tesla.com/"),
+    ("TSLA", "tsla-price-cuts-2023", "2023-12-31", "slowdown", "ลดราคาเพื่อแข่งขัน", "Tesla ใช้การปรับราคาขายเพื่อกระตุ้นอุปสงค์ท่ามกลางการแข่งขันรถยนต์ไฟฟ้าที่สูงขึ้น.", "การเติบโตของยอดขายที่แลกกับราคาขายและอัตรากำไรที่ลดลงต้องประเมินร่วมกัน.", "Tesla 2023 Annual Report", "https://ir.tesla.com/"),
+    ("NVDA", "nvda-crypto-2018", "2018-12-31", "crisis", "วัฏจักรคริปโทกดดันสินค้าคงคลัง", "ความต้องการ GPU จากตลาดคริปโทที่ผันผวนทำให้การจัดการสินค้าคงคลังและคาดการณ์อุปสงค์ท้าทายขึ้น.", "ธุรกิจเซมิคอนดักเตอร์มีวัฏจักร ควรแยกความต้องการชั่วคราวออกจากตลาดปลายทางระยะยาว.", "NVIDIA Investor Relations", "https://investor.nvidia.com/"),
+    ("NVDA", "nvda-ai-2023", "2023-05-24", "growth_engine", "ความต้องการโครงสร้างพื้นฐาน AI เร่งตัว", "NVIDIA รายงานอุปสงค์ด้านศูนย์ข้อมูลและ AI ที่เพิ่มขึ้นอย่างมาก.", "โอกาสเติบโตสูงควรติดตามความสามารถในการส่งมอบ การแข่งขัน และการกระจุกตัวของลูกค้า.", "NVIDIA Investor Relations", "https://investor.nvidia.com/"),
+    ("NVDA", "nvda-blackwell-2024", "2024-03-18", "structural_change", "เปิดตัวสถาปัตยกรรม Blackwell", "NVIDIA เปิดตัวแพลตฟอร์ม Blackwell สำหรับงานประมวลผล AI รุ่นถัดไป.", "การเปลี่ยนผ่านผลิตภัณฑ์ขนาดใหญ่ต้องติดตามวงจรการนำไปใช้และผลต่ออัตรากำไร.", "NVIDIA Newsroom", "https://nvidianews.nvidia.com/"),
+    ("AMZN", "amzn-aws-2015", "2015-12-31", "growth_engine", "AWS กลายเป็นธุรกิจที่เปิดเผยแยก", "Amazon เริ่มเปิดเผยผลของ AWS แยกต่างหาก ทำให้บทบาทของคลาวด์ต่อกำไรชัดเจนขึ้น.", "ธุรกิจที่มีอัตรากำไรต่างกันควรวิเคราะห์แยกส่วน ไม่ใช้ยอดขายรวมเพียงอย่างเดียว.", "Amazon Investor Relations", "https://ir.aboutamazon.com/"),
+    ("AMZN", "amzn-pandemic-2020", "2020-12-31", "growth_engine", "COVID-19 เร่งอีคอมเมิร์ซและ Cloud", "การระบาดเร่งการใช้ซื้อสินค้าออนไลน์และบริการคลาวด์ พร้อมเพิ่มต้นทุนด้านโลจิสติกส์และความปลอดภัย.", "การเติบโตอย่างรวดเร็วอาจมาพร้อมต้นทุนชั่วคราว จึงควรดูทั้งรายได้ กระแสเงินสด และประสิทธิภาพการดำเนินงาน.", "Amazon 2020 Annual Report", "https://ir.aboutamazon.com/"),
+    ("AMZN", "amzn-cost-2022", "2022-12-31", "slowdown", "ปรับลดต้นทุนหลังการลงทุนขยายตัว", "Amazon ปรับขนาดต้นทุนและทบทวนบางโครงการหลังการขยายกำลังการดำเนินงานในช่วงก่อนหน้า.", "หลังลงทุนขยายตัวมาก นักลงทุนควรติดตามการใช้สินทรัพย์ อัตรากำไร และวินัยด้านเงินทุน.", "Amazon 2022 Annual Report", "https://ir.aboutamazon.com/"),
+]
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -157,6 +179,12 @@ def initialize() -> None:
                 """insert or ignore into company_events(id,company_id,event_date,event_type,title_th,summary_th,
                    lesson_th,source_title,source_url,created_at) values(?,?,?,?,?,?,?,?,?,?)""",
                 (event[0], "GOOGL", *event[1:], timestamp),
+            )
+        for ticker, event_id, *event in OTHER_EVENTS:
+            connection.execute(
+                """insert or ignore into company_events(id,company_id,event_date,event_type,title_th,summary_th,
+                   lesson_th,source_title,source_url,created_at) values(?,?,?,?,?,?,?,?,?,?)""",
+                (event_id, ticker, *event, timestamp),
             )
 
 
@@ -261,37 +289,56 @@ def sync_tickers(tickers: list[str]) -> list[dict[str, Any]]:
 
 
 def sync_price(ticker: str) -> dict[str, Any]:
-    if not ALPHA_VANTAGE_API_KEY:
-        raise ValueError("Missing Alpha Vantage API key in local_settings.json")
     ticker = ticker.upper()
-    params = urlencode({
-        "function": "TIME_SERIES_MONTHLY_ADJUSTED", "symbol": ticker,
-        "apikey": ALPHA_VANTAGE_API_KEY,
-    })
-    with urllib.request.urlopen(f"{ALPHA_VANTAGE_URL}?{params}", timeout=45) as response:
-        payload = json.load(response)
-    series = payload.get("Monthly Adjusted Time Series")
-    if not series:
-        message = payload.get("Note") or payload.get("Information") or payload.get("Error Message") or "Price data unavailable"
-        raise ValueError(message)
     cutoff_year = datetime.now(timezone.utc).year - 20
     timestamp = now_iso()
+    rows: list[tuple[str, float, float, float, float, float, int, float, str]] = []
+    if ALPHA_VANTAGE_API_KEY:
+        params = urlencode({"function": "TIME_SERIES_MONTHLY_ADJUSTED", "symbol": ticker, "apikey": ALPHA_VANTAGE_API_KEY})
+        with urllib.request.urlopen(f"{ALPHA_VANTAGE_URL}?{params}", timeout=45) as response:
+            payload = json.load(response)
+        series = payload.get("Monthly Adjusted Time Series")
+        if series:
+            rows = [
+                (trade_date, float(row["1. open"]), float(row["2. high"]), float(row["3. low"]), float(row["4. close"]),
+                 float(row["5. adjusted close"]), int(row["6. volume"]), float(row["7. dividend amount"]), "alpha_vantage")
+                for trade_date, row in series.items() if int(trade_date[:4]) >= cutoff_year
+            ]
+    if not rows:
+        now = int(datetime.now(timezone.utc).timestamp())
+        start = now - 21 * 365 * 24 * 60 * 60
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?period1={start}&period2={now}&interval=1mo&events=div%2Csplits&includeAdjustedClose=true"
+        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 Longview investment education app", "Accept": "application/json"})
+        with urllib.request.urlopen(request, timeout=45) as response:
+            result = json.load(response).get("chart", {}).get("result", [None])[0]
+        if not result:
+            raise ValueError("Yahoo Finance price data unavailable")
+        quote = result.get("indicators", {}).get("quote", [{}])[0]
+        adjusted = result.get("indicators", {}).get("adjclose", [{}])[0].get("adjclose", [])
+        for index, unix_time in enumerate(result.get("timestamp", [])):
+            values = [quote.get("open", [None])[index], quote.get("high", [None])[index], quote.get("low", [None])[index], quote.get("close", [None])[index]]
+            if not all(isinstance(value, (int, float)) for value in values):
+                continue
+            trade_date = datetime.fromtimestamp(unix_time, timezone.utc).date().isoformat()
+            if int(trade_date[:4]) < cutoff_year:
+                continue
+            adjusted_close = adjusted[index] if index < len(adjusted) and isinstance(adjusted[index], (int, float)) else values[3]
+            volume = quote.get("volume", [0])[index] or 0
+            rows.append((trade_date, *[float(value) for value in values], float(adjusted_close), int(volume), 0.0, "yahoo_finance"))
+    if not rows:
+        raise ValueError("Price data unavailable")
     inserted = 0
     with connect() as connection:
         company = connection.execute("select id from companies where ticker=?", (ticker,)).fetchone()
         if not company:
             raise ValueError(f"Unknown ticker: {ticker}")
-        for trade_date, row in series.items():
-            if int(trade_date[:4]) < cutoff_year:
-                continue
+        for trade_date, open_price, high, low, close, adjusted_close, volume, dividend, source in rows:
             connection.execute(
                 """insert into stock_prices(company_id,trade_date,open,high,low,close,adjusted_close,volume,dividend,source,fetched_at)
                    values(?,?,?,?,?,?,?,?,?,?,?) on conflict(company_id,trade_date,source) do update set
                    open=excluded.open,high=excluded.high,low=excluded.low,close=excluded.close,
                    adjusted_close=excluded.adjusted_close,volume=excluded.volume,dividend=excluded.dividend,fetched_at=excluded.fetched_at""",
-                (company["id"], trade_date, float(row["1. open"]), float(row["2. high"]), float(row["3. low"]),
-                 float(row["4. close"]), float(row["5. adjusted close"]), int(row["6. volume"]),
-                 float(row["7. dividend amount"]), "alpha_vantage", timestamp),
+                (company["id"], trade_date, open_price, high, low, close, adjusted_close, volume, dividend, source, timestamp),
             )
             inserted += 1
     return {"ticker": ticker, "prices": inserted, "ok": True}

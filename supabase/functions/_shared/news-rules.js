@@ -240,6 +240,12 @@ export function newsImageModel(article = {}) {
   return { category, label: NEWS_IMAGE_FALLBACKS[category] };
 }
 
+export function latestPriceSnapshot(prices = []) {
+  const rows = Array.isArray(prices) ? prices.filter(row => row && row.trade_date && Number.isFinite(Number(row.adjusted_close))).sort((a, b) => String(a.trade_date).localeCompare(String(b.trade_date))) : [];
+  const latest = rows.at(-1);
+  return latest ? { price: Number(latest.adjusted_close), tradeDate: latest.trade_date, source: latest.source || null } : null;
+}
+
 export function articleReadingModel(article, articleLinks = [], holdingIds = [], companies = []) {
   if (!article?.id) return null;
   const relatedCompanies = relatedHeldCompanies(article.id, articleLinks, holdingIds, companies);

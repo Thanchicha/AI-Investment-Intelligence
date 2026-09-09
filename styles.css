@@ -261,6 +261,12 @@ h3 { font-size: 15px; }
 .price-section { margin-bottom: 20px; }
 .price-chart-wrap { width: 100%; overflow: hidden; }
 .price-chart { width: 100%; min-height: 220px; display: block; }
+.price-point { fill: var(--green); opacity: 0; transition: opacity .15s; }
+.price-chart:hover .price-point, .price-point:hover { opacity: .9; }
+.latest-price { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin: 4px 0 14px; padding: 12px 14px; border-radius: 12px; background: var(--soft); }
+.latest-price small { display: block; color: var(--muted); font-size: 10px; }
+.latest-price strong { display: block; margin-top: 3px; font-size: 24px; color: var(--forest); }
+.latest-price > span { color: var(--muted); font-size: 10px; }
 .price-line { fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .event-dot { fill: #fff; stroke: var(--amber); stroke-width: 3; }
 .chart-axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; }

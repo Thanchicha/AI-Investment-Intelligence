@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const jsonHeaders = { "Content-Type": "application/json" };
-const TICKER = "GOOGL";
+const SUPPORTED_TICKERS = ["GOOGL", "MSFT", "AAPL", "META", "TSLA", "NVDA", "AMZN"] as const;
 
 Deno.serve(async (request) => {
   if (request.method !== "POST") {
@@ -13,13 +13,19 @@ Deno.serve(async (request) => {
   });
 
   try {
+    const body = await request.json().catch(() => ({}));
+    const requestedTicker = String(body?.ticker || "GOOGL").toUpperCase();
+    if (!SUPPORTED_TICKERS.includes(requestedTicker as typeof SUPPORTED_TICKERS[number])) {
+      return new Response(JSON.stringify({ error: "Unsupported ticker" }), { status: 400, headers: jsonHeaders });
+    }
+    const ticker = requestedTicker;
     const { data: company, error: companyError } = await db.from("companies")
-      .select("id").eq("ticker", TICKER).single();
+      .select("id").eq("ticker", ticker).single();
     if (companyError) throw companyError;
 
     const now = Math.floor(Date.now() / 1000);
     const start = now - (21 * 365 * 24 * 60 * 60);
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${TICKER}?period1=${start}&period2=${now}&interval=1mo&events=div%2Csplits&includeAdjustedClose=true`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?period1=${start}&period2=${now}&interval=1mo&events=div%2Csplits&includeAdjustedClose=true`;
     const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 Longview investment education app" } });
     if (!response.ok) throw new Error(`Yahoo Finance returned ${response.status}`);
     const payload = await response.json();
@@ -56,7 +62,7 @@ Deno.serve(async (request) => {
 
     const latest = recentRows.at(-1) as any;
     return new Response(JSON.stringify({
-      ok: true, ticker: TICKER, prices: recentRows.length,
+      ok: true, ticker, prices: recentRows.length,
       latest: latest ? { date: latest.trade_date, close: latest.close, adjustedClose: latest.adjusted_close } : null,
     }), { headers: jsonHeaders });
   } catch (error) {

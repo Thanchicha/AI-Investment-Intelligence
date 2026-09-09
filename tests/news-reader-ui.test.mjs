@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   articleReadingModel,
   articleRouteId,
   newsImageModel,
+  latestPriceSnapshot,
 } from "../supabase/functions/_shared/news-rules.js";
 
 const companies = [
@@ -80,4 +82,19 @@ test("selects a compact category card without an image URL", () => {
     category: "ai_cloud",
     label: "AI และ Cloud",
   });
+});
+
+test("returns the newest available price with its date and source", () => {
+  assert.deepEqual(latestPriceSnapshot([
+    { trade_date: "2025-01-01", adjusted_close: 100, source: "alpha_vantage" },
+    { trade_date: "2026-02-01", adjusted_close: 120, source: "yahoo_finance" },
+  ]), { price: 120, tradeDate: "2026-02-01", source: "yahoo_finance" });
+});
+
+test("shows a first-stock call to action when a new portfolio is empty", () => {
+  const app = readFileSync(new URL("../app-v2.js", import.meta.url), "utf8");
+
+  assert.match(app, /function firstStockPrompt\(\)/);
+  assert.match(app, /เพิ่มหุ้นตัวแรก/);
+  assert.match(app, /onclick="openStockDialog\(\)"/);
 });

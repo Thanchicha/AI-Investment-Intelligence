@@ -1,4 +1,4 @@
-import { articleReadingModel, articleRouteId, articlesForHoldings, relatedHeldCompanies } from "./supabase/functions/_shared/news-rules.js";
+import { articleReadingModel, articleRouteId, articlesForHoldings, latestPriceSnapshot, relatedHeldCompanies } from "./supabase/functions/_shared/news-rules.js";
 
 const config = window.LONGVIEW_CONFIG || {};
 const configured = Boolean(config.supabaseUrl && config.supabasePublishableKey && window.supabase);
@@ -106,9 +106,13 @@ function pageHeader(eyebrow, title, copy) {
   return `<div class="page-heading"><div><span class="eyebrow">${eyebrow}</span><h1>${title}</h1><p>${copy}</p></div><span class="as-of">${newsContext ? "อัปเดตข่าว" : "ข้อมูล SEC"} · ${esc(asOf)}</span></div>`;
 }
 
+function firstStockPrompt() {
+  return `<div class="empty-state first-stock-prompt"><span class="eyebrow">FIRST STEP</span><h2>เริ่มติดตามหุ้นตัวแรกของคุณ</h2><p>เลือกหุ้นที่สนใจ แล้ว Longview จะรวมข่าวและข้อมูลสำคัญของหุ้นนั้นไว้ให้</p><button class="primary-button" onclick="openStockDialog()">＋ เพิ่มหุ้นตัวแรก</button></div>`;
+}
+
 function portfolioRows() {
   const companies = holdingCompanies();
-  if (!companies.length) return `<div class="empty-state">ยังไม่มีหุ้นในพอร์ต<br><button class="text-link" onclick="openStockDialog()">+ เพิ่มหุ้นตัวแรก</button></div>`;
+  if (!companies.length) return firstStockPrompt();
   return companies.map(company => {
     const facts = latestFacts(company.id, "10-K");
     const growth = growthFor(company.id);
@@ -159,8 +163,8 @@ function analyzeNews(article) {
 function newsAnalysisCards(limit = 8, articles = portfolioNews()) {
   const categoryLabels = { earnings: "งบและคาดการณ์", ai_cloud: "AI และ Cloud", regulation: "กฎหมาย", core_business: "ธุรกิจหลัก", company: "บริษัท" };
   if (!articles.length) {
-    const message = holdingIds().length ? "ยังไม่มีข่าวล่าสุดสำหรับหุ้นที่คุณติดตาม" : "เพิ่มหุ้นในพอร์ตเพื่อรับข่าวที่เกี่ยวข้อง";
-    return `<div class="empty-state"><h3>${message}</h3></div>`;
+    if (!holdingIds().length) return firstStockPrompt();
+    return `<div class="empty-state"><h3>ยังไม่มีข่าวล่าสุดสำหรับหุ้นที่คุณติดตาม</h3></div>`;
   }
   return articles.slice(0, limit).map(article => {
     const model = articleReadingModel(article, state.newsLinks, holdingIds(), state.companies);
@@ -178,6 +182,10 @@ function newsAnalysisCards(limit = 8, articles = portfolioNews()) {
 
 function dashboard() {
   const companies = holdingCompanies();
+  if (!companies.length) {
+    app.innerHTML = `<div class="page">${pageHeader("PORTFOLIO NEWS INTELLIGENCE", "เริ่มสร้างพอร์ตข่าวของคุณ", "เพิ่มหุ้นตัวแรกเพื่อรับสรุปข่าวภาษาไทยและติดตามข้อมูลสำคัญของบริษัทนั้น")}${firstStockPrompt()}</div>`;
+    return;
+  }
   const articles = portfolioNews();
   const analyzed = articles.map(analyzeNews);
   const increased = analyzed.filter(item => item.key === "increase").length;
@@ -273,7 +281,8 @@ function priceChart(company) {
     return `<circle cx="${nearest.x}" cy="${nearest.y}" r="5" class="event-dot"><title>${esc(event.title_th)}</title></circle>`;
   }).join("");
   const sourceLabel = prices.at(-1)?.source === "yahoo_finance" ? "Yahoo Finance" : "Alpha Vantage";
-  return `<div class="price-chart-wrap"><svg class="price-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="กราฟราคาปรับปรุงย้อนหลัง 20 ปีของ ${esc(company.ticker)}"><defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5aa47d" stop-opacity=".28"/><stop offset="1" stop-color="#5aa47d" stop-opacity="0"/></linearGradient></defs><path d="${area}" fill="url(#chartFill)"/><path d="${path}" class="price-line"/>${markers}</svg><div class="chart-axis"><span>${esc(prices[0].trade_date.slice(0,4))}</span><span>Adjusted monthly close · ${esc(sourceLabel)}</span><span>${esc(prices.at(-1).trade_date.slice(0,4))}</span></div></div>`;
+  const points = coords.map(point => `<circle class="price-point" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="3"><title>${esc(point.row.trade_date)} · $${Number(point.row.adjusted_close).toFixed(2)}</title></circle>`).join("");
+  return `<div class="price-chart-wrap"><svg class="price-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="กราฟราคาปรับปรุงย้อนหลัง 20 ปีของ ${esc(company.ticker)}"><defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5aa47d" stop-opacity=".28"/><stop offset="1" stop-color="#5aa47d" stop-opacity="0"/></linearGradient></defs><path d="${area}" fill="url(#chartFill)"/><path d="${path}" class="price-line"/>${points}${markers}</svg><div class="chart-axis"><span>${esc(prices[0].trade_date.slice(0,4))}</span><span>เลื่อนเมาส์ดูราคา · Adjusted monthly close · ${esc(sourceLabel)}</span><span>${esc(prices.at(-1).trade_date.slice(0,4))}</span></div></div>`;
 }
 
 function eventTimeline(company) {
@@ -300,9 +309,10 @@ function companyPage(ticker) {
   const status = statusFor(company);
   const filings = state.sources.filter(s => s.company_id === company.id).sort((a, b) => b.filed_at.localeCompare(a.filed_at));
   const priceStats = priceAnalysis(company.id);
+  const latestPrice = latestPriceSnapshot(priceStats.prices);
   const latestPeriod = facts.revenue?.period_end || facts.net_income?.period_end || facts.diluted_eps?.period_end;
   app.innerHTML = `<div class="page"><section class="company-hero"><a class="back-link" href="#portfolio">← กลับไปที่พอร์ต</a><div class="company-title">${companyLogo(company)}<div><h1>${esc(company.legal_name)}</h1><p>${esc(company.ticker)} · ${esc(company.sector || "")}</p></div></div></section>
-    <section class="panel price-section"><div class="panel-heading"><div><span class="eyebrow">20 YEAR VIEW</span><h2>เส้นทางราคาหุ้นและเหตุการณ์สำคัญ</h2></div><span class="as-of">ราคา adjusted · ไม่ใช่เรียลไทม์</span></div>${priceChart(company)}
+    <section class="panel price-section"><div class="panel-heading"><div><span class="eyebrow">20 YEAR VIEW</span><h2>เส้นทางราคาหุ้นและเหตุการณ์สำคัญ</h2></div><span class="as-of">ข้อมูลล่าสุด · ไม่ใช่เรียลไทม์</span></div>${latestPrice ? `<div class="latest-price"><div><small>ราคาล่าสุดที่มีในระบบ</small><strong>$${latestPrice.price.toFixed(2)}</strong></div><span>${new Date(latestPrice.tradeDate).toLocaleDateString("th-TH")} · ${esc(latestPrice.source === "yahoo_finance" ? "Yahoo Finance" : "Alpha Vantage")}</span></div>` : ""}${priceChart(company)}
       <div class="price-stats"><div><small>CAGR</small><strong>${priceStats.cagr === null ? "—" : new Intl.NumberFormat("th-TH", { style:"percent", maximumFractionDigits:1 }).format(priceStats.cagr)}</strong></div><div><small>Maximum drawdown</small><strong class="trend-down">${priceStats.maxDrawdown === null ? "—" : new Intl.NumberFormat("th-TH", { style:"percent", maximumFractionDigits:1 }).format(priceStats.maxDrawdown)}</strong></div><div><small>ระยะเวลาฟื้นจากจุดต่ำสุด</small><strong>${priceStats.recoveryMonths === null ? "ยังไม่ฟื้น/ไม่มีข้อมูล" : `${priceStats.recoveryMonths} เดือน`}</strong></div></div></section>
     <div class="company-overview-grid"><div>
       <section class="panel"><div class="panel-heading"><div><span class="eyebrow">FINANCIAL STATUS</span><h2>สถานการณ์จากงบล่าสุด</h2></div>${badge(status)}</div><p class="prose">${esc(status.note)}</p><div class="source-card">สถานะนี้ใช้กฎเปรียบเทียบรายได้ 10-K ล่าสุดกับปีก่อน ไม่ใช่คำแนะนำซื้อหรือขาย</div></section>
@@ -317,8 +327,7 @@ function newsPage() {
   const latest = state.newsSync?.finished_at ? new Date(state.newsSync.finished_at) : null;
   const status = latest ? `อัปเดตล่าสุด ${latest.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })} · ระบบตรวจทุก 30 นาที` : "กำลังรอการอัปเดตข่าวรอบแรก";
   app.innerHTML = `<div class="page">${pageHeader("LIVE NEWS ANALYSIS", "วิเคราะห์ข่าวที่เกี่ยวข้องกับพอร์ต", "เชื่อมข่าวกับบริษัทที่คุณถืออยู่ พร้อมประเมินทิศทางความเสี่ยงและคำถามที่ต้องหาคำตอบต่อ")}
-    <section class="analysis-feed"><div class="section-title"><div><span class="eyebrow">AUTO REFRESH</span><h2>ข่าวและบทวิเคราะห์ล่าสุด</h2></div><span class="as-of">${esc(status)}</span></div>${newsAnalysisCards(100, portfolioNews())}</section>
-    <section class="panel"><div class="panel-heading"><div><span class="eyebrow">PRIMARY SOURCES</span><h2>เอกสาร SEC ล่าสุด</h2></div></div>${filingList(state.sources.filter(s => holdingCompanies().some(c => c.id === s.company_id)).sort((a, b) => b.filed_at.localeCompare(a.filed_at)))}</section></div>`;
+    <section class="analysis-feed"><div class="section-title"><div><span class="eyebrow">AUTO REFRESH</span><h2>ข่าวและบทวิเคราะห์ล่าสุด</h2></div><span class="as-of">${esc(status)}</span></div>${newsAnalysisCards(100, portfolioNews())}</section></div>`;
 }
 
 function articleReaderPage(articleId) {
