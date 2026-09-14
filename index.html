@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Manrope:wght@500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260906-1" />
+    <link rel="stylesheet" href="styles.css?v=20260914-2" />
   </head>
   <body>
     <div class="app-shell">
@@ -29,9 +29,9 @@
           <div><strong>SEC data pipeline</strong><small id="pipelineStatus">รอการเชื่อมต่อ Supabase</small></div>
         </div>
 
-        <div class="sidebar-footer">
+        <div class="sidebar-footer account-footer">
           <div class="avatar">KS</div>
-          <div><strong>บัญชีส่วนตัว</strong><small>นักลงทุนระยะยาว</small></div>
+          <div><strong id="accountLabel">กำลังโหลดบัญชี</strong><button id="accountAction" class="account-action" type="button">เข้าสู่ระบบ / สมัครสมาชิก</button></div>
         </div>
       </aside>
 
@@ -68,6 +68,6 @@
     <div id="toast" class="toast" role="status"></div>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script type="module" src="app-v2.js?v=20260906-2"></script>
+    <script type="module" src="app-v2.js?v=20260914-2"></script>
   </body>
 </html>

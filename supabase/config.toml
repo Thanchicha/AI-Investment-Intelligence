@@ -1,9 +1,10 @@
 project_id = "longview-investment-intelligence"
 
 [auth]
-site_url = "http://localhost:3000"
-additional_redirect_urls = []
+site_url = "http://127.0.0.1:4175"
+additional_redirect_urls = ["http://127.0.0.1:4175/**", "http://localhost:4175/**"]
 enable_anonymous_sign_ins = true
+enable_manual_linking = true
 
 [auth.mfa.totp]
 enroll_enabled = true

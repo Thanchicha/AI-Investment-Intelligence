@@ -70,7 +70,7 @@ Restart `server.py`, open GOOGL, and press **ดึงราคาย้อน�
 ## Architecture
 
 - Static Thai frontend using the Supabase browser client
-- Anonymous Supabase Auth for a frictionless personal session
+- Supabase Auth with email/password, plus a guest session that can be upgraded without losing its portfolio
 - Row Level Security isolates each user's portfolio
 - Public-company financial data is readable only by authenticated users
 - `ingest-sec` Edge Function fetches SEC Company Facts and writes with service-role access
@@ -81,6 +81,9 @@ Restart `server.py`, open GOOGL, and press **ดึงราคาย้อน�
 ## 1. Create and configure Supabase
 
 Create a Supabase project, then enable **Authentication → Providers → Anonymous Sign-Ins**.
+Keep email/password sign-ins enabled and turn on manual identity linking. Each signed-in
+user sees only their own portfolio through Row Level Security. The portfolio-news RPC
+returns no more than 100 matching articles published during the previous seven days.
 
 Copy `config.example.js` values into `config.js`:
 
@@ -160,6 +163,19 @@ python -m http.server 4173
 ```
 
 Open `http://localhost:4173`.
+
+## 5. Prepare a public deployment
+
+After choosing the public site URL, replace the local `site_url` in
+`supabase/config.toml` and add the public domain to `additional_redirect_urls`, then run:
+
+```powershell
+supabase config push
+```
+
+Deploy the static frontend over HTTPS and keep only the Supabase URL and publishable key
+in `config.js`. Users can then sign in with the same email/password on phones, tablets,
+and computers. Do not add a service-role key or ingestion secret to the deployed files.
 
 ## Data behavior
 

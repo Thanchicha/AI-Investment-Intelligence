@@ -1,13 +1,19 @@
-import { articleReadingModel, articleRouteId, articlesForHoldings, latestPriceSnapshot, relatedHeldCompanies } from "./supabase/functions/_shared/news-rules.js";
+import { articleReadingModel, articleRouteId, latestPriceSnapshot, relatedHeldCompanies } from "./supabase/functions/_shared/news-rules.js";
+import { recentPortfolioNews, loadPortfolioNews } from "./news-feed.js";
 
 const config = window.LONGVIEW_CONFIG || {};
 const configured = Boolean(config.supabaseUrl && config.supabasePublishableKey && window.supabase);
 const db = configured ? window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey) : null;
-const localMode = !configured;
+const localMode = !config.supabaseUrl && !config.supabasePublishableKey;
 
 const colors = { GOOGL: "#3d6ea8", NVDA: "#4f8a51", MSFT: "#6d748d", AAPL: "#4e5961", AMZN: "#866338", META: "#496e96" };
 const metricLabels = { revenue: "รายได้", net_income: "กำไรสุทธิ", diluted_eps: "EPS ปรับลด" };
 const state = { session: null, companies: [], holdings: [], facts: [], sources: [], prices: [], events: [], news: [], newsLinks: [], newsSync: null, loading: true, error: null };
+let accountMode = null;
+let accountMessage = "";
+let accountBusy = false;
+let recoveryMode = false;
+let loadVersion = 0;
 
 const app = document.querySelector("#app");
 const dialog = document.querySelector("#stockDialog");
@@ -76,7 +82,96 @@ function growthFor(companyId) {
 function badge(status) { return `<span class="badge ${status.key}">${esc(status.label)}</span>`; }
 function holdingCompanies() { return state.holdings.map(h => state.companies.find(c => c.id === h.company_id)).filter(Boolean); }
 function holdingIds() { return state.holdings.map(holding => holding.company_id); }
-function portfolioNews() { return articlesForHoldings(state.news, state.newsLinks, holdingIds()); }
+function portfolioNews() { return recentPortfolioNews(state.news, state.newsLinks, holdingIds()); }
+
+window.openAccount = function (mode = "login") {
+  accountMode = mode; accountMessage = ""; render();
+};
+window.closeAccount = function () { accountMode = null; accountMessage = ""; render(); };
+
+function accountView() {
+  const mode = recoveryMode ? "password" : accountMode || "login";
+  const signup = mode === "signup";
+  const forgot = mode === "forgot";
+  const passwordOnly = mode === "password";
+  const guestSignup = signup && state.session?.user?.is_anonymous;
+  const title = signup ? "สร้างบัญชี Longview" : forgot ? "ตั้งรหัสผ่านใหม่" : passwordOnly ? "บันทึกรหัสผ่านใหม่" : "เข้าสู่ระบบ Longview";
+  app.innerHTML = `<div class="page auth-page"><section class="panel auth-card"><span class="eyebrow">LONGVIEW</span><h1>${title}</h1><p>ติดตามข่าวภาษาไทยของหุ้นในพอร์ตเดียวกันบนมือถือ แท็บเล็ต และคอมพิวเตอร์</p>
+    ${guestSignup ? `<div class="source-card">รายการหุ้นเดิมจะถูกเก็บไว้ เมื่อยืนยันอีเมลและตั้งรหัสผ่านให้บัญชีนี้</div>` : ""}
+    <form id="accountForm" data-mode="${mode}">
+      ${passwordOnly ? "" : `<label for="accountEmail">อีเมล</label><input id="accountEmail" name="email" type="email" autocomplete="email" required maxlength="254">`}
+      ${forgot || guestSignup ? "" : `<label for="accountPassword">รหัสผ่าน${signup || passwordOnly ? " (อย่างน้อย 8 ตัวอักษร)" : ""}</label><input id="accountPassword" name="password" type="password" autocomplete="${signup || passwordOnly ? "new-password" : "current-password"}" minlength="${signup || passwordOnly ? 8 : 1}" required>`}
+      <p class="auth-message" role="status">${esc(accountMessage)}</p>
+      <button class="primary-button auth-submit" type="submit" ${accountBusy ? "disabled" : ""}>${accountBusy ? "กำลังดำเนินการ…" : guestSignup ? "ส่งอีเมลยืนยัน" : signup ? "สมัครสมาชิก" : forgot ? "ส่งลิงก์ตั้งรหัสผ่าน" : passwordOnly ? "บันทึกรหัสผ่าน" : "เข้าสู่ระบบ"}</button>
+    </form>
+    ${passwordOnly ? "" : `<div class="auth-links"><button class="text-link" onclick="openAccount('${signup ? "login" : "signup"}')">${signup ? "มีบัญชีแล้ว? เข้าสู่ระบบ" : "ยังไม่มีบัญชี? สมัครสมาชิก"}</button><button class="text-link" onclick="openAccount('forgot')">ลืมรหัสผ่าน</button></div>`}
+    ${state.session && !recoveryMode ? `<button class="secondary-button auth-back" onclick="closeAccount()">กลับไปพอร์ต</button>` : ""}
+    </section></div>`;
+}
+
+function clearPrivateState() {
+  state.holdings = []; state.news = []; state.newsLinks = []; state.session = null;
+}
+
+window.signOut = async function () {
+  if (!db || accountBusy) return;
+  accountBusy = true; ++loadVersion;
+  const { error } = await db.auth.signOut();
+  accountBusy = false;
+  if (error) return showToast(`ออกจากระบบไม่สำเร็จ: ${error.message}`);
+  clearPrivateState(); accountMode = null; recoveryMode = false; state.loading = false; state.error = null;
+  dialog.close(); render();
+};
+
+app.addEventListener("submit", async event => {
+  if (event.target.id !== "accountForm") return;
+  event.preventDefault();
+  if (accountBusy || !db) return;
+  const fields = new FormData(event.target);
+  const email = String(fields.get("email") || "").trim();
+  const password = String(fields.get("password") || "");
+  const mode = event.target.dataset.mode;
+  const guestAccount = Boolean(state.session?.user?.is_anonymous);
+  accountBusy = true; accountMessage = "";
+  const button = event.target.querySelector('button[type="submit"]');
+  button.disabled = true; button.textContent = "กำลังดำเนินการ…";
+  try {
+    const redirectTo = `${location.origin}${location.pathname}#dashboard`;
+    let result;
+    if (mode === "signup") {
+      if (guestAccount) {
+        result = await db.auth.updateUser({ email, data: { needs_password: true } }, { emailRedirectTo: redirectTo });
+      } else {
+        result = await db.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } });
+      }
+      if (result.error) throw result.error;
+      if (guestAccount || !result.data.session) {
+        accountMessage = guestAccount
+          ? "ส่งอีเมลยืนยันแล้ว เมื่อยืนยันเสร็จ ระบบจะให้ตั้งรหัสผ่านและพอร์ตเดิมจะอยู่ในบัญชีนี้"
+          : "สมัครเรียบร้อย กรุณายืนยันอีเมล แล้วเข้าสู่ระบบ";
+        return;
+      }
+    } else if (mode === "forgot") {
+      result = await db.auth.resetPasswordForEmail(email, { redirectTo });
+      if (result.error) throw result.error;
+      accountMessage = "ถ้ามีบัญชีนี้ในระบบ เราจะส่งลิงก์ตั้งรหัสผ่านใหม่ให้ทางอีเมล";
+      return;
+    } else if (mode === "password") {
+      result = await db.auth.updateUser({ password, data: { needs_password: false } });
+      if (result.error) throw result.error;
+      recoveryMode = false;
+    } else {
+      result = await db.auth.signInWithPassword({ email, password });
+      if (result.error) throw result.error;
+    }
+    accountMode = null; accountMessage = "";
+    await loadData();
+  } catch (error) {
+    accountMessage = error.message === "Invalid login credentials" ? "อีเมลหรือรหัสผ่านไม่ถูกต้อง" : error.message === "Email not confirmed" ? "กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ" : error.message || "ดำเนินการไม่สำเร็จ กรุณาลองอีกครั้ง";
+  } finally {
+    accountBusy = false; render();
+  }
+});
 
 function loadingView(message = "กำลังโหลดข้อมูลจาก Supabase…") {
   app.innerHTML = `<div class="page"><div class="empty-state"><span class="live-dot" style="display:inline-block;margin-right:10px"></span>${message}</div></div>`;
@@ -326,8 +421,8 @@ function companyPage(ticker) {
 function newsPage() {
   const latest = state.newsSync?.finished_at ? new Date(state.newsSync.finished_at) : null;
   const status = latest ? `อัปเดตล่าสุด ${latest.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })} · ระบบตรวจทุก 30 นาที` : "กำลังรอการอัปเดตข่าวรอบแรก";
-  app.innerHTML = `<div class="page">${pageHeader("LIVE NEWS ANALYSIS", "วิเคราะห์ข่าวที่เกี่ยวข้องกับพอร์ต", "เชื่อมข่าวกับบริษัทที่คุณถืออยู่ พร้อมประเมินทิศทางความเสี่ยงและคำถามที่ต้องหาคำตอบต่อ")}
-    <section class="analysis-feed"><div class="section-title"><div><span class="eyebrow">AUTO REFRESH</span><h2>ข่าวและบทวิเคราะห์ล่าสุด</h2></div><span class="as-of">${esc(status)}</span></div>${newsAnalysisCards(100, portfolioNews())}</section></div>`;
+  app.innerHTML = `<div class="page">${pageHeader("LIVE NEWS", "ข่าวที่เกี่ยวข้องกับพอร์ต", "สรุปข่าวภาษาไทยย้อนหลังไม่เกิน 7 วัน สูงสุด 100 ข่าว เรียงจากข่าวล่าสุด")}
+    <section class="analysis-feed"><div class="section-title"><div><span class="eyebrow">7-DAY NEWS</span><h2>ข่าวล่าสุดสำหรับหุ้นที่คุณติดตาม</h2></div><span class="as-of">${esc(status)}</span></div>${newsAnalysisCards(100, portfolioNews())}</section></div>`;
 }
 
 function articleReaderPage(articleId) {
@@ -364,10 +459,20 @@ function articleReaderPage(articleId) {
 }
 
 function render() {
+  const accountLabel = document.querySelector("#accountLabel");
+  if (accountLabel) accountLabel.textContent = state.session?.user?.email || (localMode ? "โหมดเครื่องนี้" : "บัญชีชั่วคราว");
+  const accountAction = document.querySelector("#accountAction");
+  if (accountAction) {
+    accountAction.hidden = localMode;
+    accountAction.textContent = state.session?.user && !state.session.user.is_anonymous ? "ออกจากระบบ" : "เข้าสู่ระบบ / สมัครสมาชิก";
+    accountAction.onclick = state.session?.user && !state.session.user.is_anonymous ? signOut : () => openAccount();
+  }
+  document.querySelector("#openAddStock").disabled = state.loading || (!localMode && (!state.session || Boolean(accountMode) || recoveryMode));
   const pipelineStatus = document.querySelector("#pipelineStatus");
   if (pipelineStatus) pipelineStatus.textContent = state.loading ? "กำลังอ่านฐานข้อมูล" : state.error ? "การเชื่อมต่อมีปัญหา" : localMode ? "SQLite Local mode" : "Supabase production mode";
   if (state.loading) return loadingView();
   if (state.error) return errorView();
+  if (!localMode && (!state.session || accountMode || recoveryMode)) return accountView();
   const route = (location.hash || "#dashboard").slice(1);
   document.querySelectorAll(".main-nav a").forEach(a => a.classList.toggle("active", route.startsWith(a.dataset.route)));
   const readerId = articleRouteId(route);
@@ -376,11 +481,15 @@ function render() {
   else if (route === "news") newsPage();
   else if (route.startsWith("company/")) companyPage(route.split("/")[1]);
   else dashboard();
+  if (!localMode && state.session?.user?.is_anonymous) {
+    app.querySelector(".page")?.insertAdjacentHTML("afterbegin", `<div class="guest-banner"><span>พอร์ตนี้ยังเป็นบัญชีชั่วคราว สมัครสมาชิกเพื่อใช้พอร์ตเดียวกันข้ามอุปกรณ์</span><button class="primary-button" onclick="openAccount('signup')">บันทึกพอร์ตด้วยอีเมล</button></div>`);
+  }
   document.querySelector(".sidebar").classList.remove("open");
   window.scrollTo(0, 0);
 }
 
 window.loadData = async function () {
+  const version = ++loadVersion;
   state.loading = true; state.error = null; render();
   try {
     if (localMode) {
@@ -398,25 +507,28 @@ window.loadData = async function () {
       state.newsSync = payload.newsSync || null;
       return;
     }
-    let { data: sessionData } = await db.auth.getSession();
-    if (!sessionData.session) {
-      const { data, error } = await db.auth.signInAnonymously();
-      if (error) throw new Error(`Anonymous sign-in failed: ${error.message}. Enable Anonymous Sign-Ins in Supabase Auth.`);
-      state.session = data.session;
-    } else state.session = sessionData.session;
+    if (!db) throw new Error("โหลดการเชื่อมต่อ Supabase ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตและลองใหม่");
+    const { data: sessionData, error: sessionError } = await db.auth.getSession();
+    if (sessionError) throw sessionError;
+    if (version !== loadVersion) return;
+    state.session = sessionData.session;
+    if (!state.session) { clearPrivateState(); return; }
+    if (!state.session.user.is_anonymous && state.session.user.user_metadata?.needs_password && !accountMode) {
+      recoveryMode = true; accountMode = "password";
+    }
 
-    const [companiesResult, holdingsResult, factsResult, sourcesResult, pricesResult, eventsResult, newsResult, newsLinksResult, newsSyncResult] = await Promise.all([
+    const [companiesResult, holdingsResult, factsResult, sourcesResult, pricesResult, eventsResult, feed, newsSyncResult] = await Promise.all([
       db.from("companies").select("id,ticker,cik,legal_name,sector,last_sec_sync_at").eq("active", true).order("ticker"),
       db.from("portfolio_holdings").select("id,company_id,user_id").order("created_at"),
       db.from("financial_facts").select("id,company_id,source_document_id,metric,value,unit,period_start,period_end,form,filed_at,accession_number,taxonomy_concept").order("filed_at", { ascending: false }).limit(1000),
       db.from("source_documents").select("id,company_id,form,title,original_url,filed_at,fiscal_year,fiscal_period").order("filed_at", { ascending: false }).limit(200),
       db.from("stock_prices").select("company_id,trade_date,open,high,low,close,adjusted_close,volume,source").order("trade_date").limit(5000),
       db.from("company_events").select("id,company_id,event_date,event_type,title_th,summary_th,lesson_th,source_title,source_url").order("event_date"),
-      db.from("stock_news").select("*").order("published_at", { ascending: false }).limit(100),
-      db.from("news_company_links").select("news_id,company_id,discovery_tickers,explicit_mention,title_mention,relevance_score,matched_aliases"),
+      loadPortfolioNews(db),
       db.from("news_sync_runs").select("finished_at,status,articles_found,articles_saved").order("started_at", { ascending: false }).limit(1).maybeSingle()
     ]);
-    const failed = [companiesResult, holdingsResult, factsResult, sourcesResult, pricesResult, eventsResult, newsResult, newsLinksResult, newsSyncResult].find(result => result.error);
+    if (version !== loadVersion) return;
+    const failed = [companiesResult, holdingsResult, factsResult, sourcesResult, pricesResult, eventsResult, newsSyncResult].find(result => result.error);
     if (failed) throw failed.error;
     state.companies = companiesResult.data || [];
     state.holdings = holdingsResult.data || [];
@@ -424,13 +536,14 @@ window.loadData = async function () {
     state.sources = sourcesResult.data || [];
     state.prices = pricesResult.data || [];
     state.events = eventsResult.data || [];
-    state.news = newsResult.data || [];
-    state.newsLinks = newsLinksResult.data || [];
+    state.news = feed.news;
+    state.newsLinks = feed.links;
     state.newsSync = newsSyncResult.data || null;
   } catch (error) {
+    if (version !== loadVersion) return;
     state.error = error.message || String(error);
   } finally {
-    state.loading = false; render();
+    if (version === loadVersion) { state.loading = false; render(); }
   }
 };
 
@@ -442,7 +555,7 @@ function updateStockOptions() {
   document.querySelector("#stockForm .primary-button").disabled = !available.length;
 }
 
-window.openStockDialog = function () { if (state.loading) return; updateStockOptions(); dialog.showModal(); };
+window.openStockDialog = function () { if (state.loading || (!localMode && !state.session)) return; updateStockOptions(); dialog.showModal(); };
 window.removeStock = async function (event, companyId) {
   event.stopPropagation();
   const holding = state.holdings.find(h => h.company_id === companyId);
@@ -474,7 +587,7 @@ document.querySelector("#stockForm").addEventListener("submit", async event => {
     if (result.error) return showToast(`เพิ่มไม่สำเร็จ: ${result.error.message}`);
     data = result.data;
   }
-  state.holdings.push(data); dialog.close(); showToast("เพิ่มเข้าพอร์ตแล้ว"); render();
+  state.holdings.push(data); dialog.close(); showToast("เพิ่มเข้าพอร์ตแล้ว"); await loadData();
 });
 window.addEventListener("hashchange", render);
 
@@ -510,5 +623,31 @@ window.syncPrice = async function (ticker) {
     await loadData();
   } catch (error) { showToast(error.message); }
 };
+
+if (db) {
+  db.auth.onAuthStateChange((event, session) => {
+    if (event === "PASSWORD_RECOVERY") { recoveryMode = true; accountMode = "password"; }
+    if (accountBusy || event === "INITIAL_SESSION") return;
+    if (event === "TOKEN_REFRESHED") { state.session = session; return; }
+    // Defer queries until Supabase has released its auth lock.
+    setTimeout(() => { if (!session) clearPrivateState(); loadData(); }, 0);
+  });
+}
+setInterval(() => { if (!state.loading && !accountBusy && !accountMode && state.session) refreshNews(); }, 60_000);
+window.addEventListener("focus", () => { if (!state.loading && !accountBusy && !accountMode && state.session) refreshNews(); });
+
+async function refreshNews() {
+  if (!db) return;
+  const userId = state.session?.user.id;
+  try {
+    const feed = await loadPortfolioNews(db);
+    const sync = await db.from("news_sync_runs").select("finished_at,status").order("started_at", { ascending: false }).limit(1).maybeSingle();
+    if (state.session?.user.id !== userId || accountMode || state.loading) return;
+    state.news = feed.news; state.newsLinks = feed.links;
+    if (!sync.error) state.newsSync = sync.data;
+    const scroll = window.scrollY;
+    render(); window.scrollTo(0, scroll);
+  } catch { showToast("อัปเดตข่าวไม่สำเร็จ กำลังแสดงข้อมูลที่โหลดไว้ล่าสุด"); }
+}
 
 loadData();
